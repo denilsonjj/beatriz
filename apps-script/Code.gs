@@ -78,6 +78,22 @@ function doPost(e) {
       })
     }
 
+    if (payload.action === 'update') {
+      return createJsonResponse({
+        success: true,
+        message: 'Registro atualizado com sucesso.',
+        data: updateHealthRecord(spreadsheet, payload.resource, payload.row, payload.data),
+      })
+    }
+
+    if (payload.action === 'delete') {
+      return createJsonResponse({
+        success: true,
+        message: 'Registro excluído com sucesso.',
+        data: deleteHealthRecord(spreadsheet, payload.resource, payload.row),
+      })
+    }
+
     if (payload.action !== 'create') {
       throw new Error('Ação inválida.')
     }
@@ -297,6 +313,67 @@ function sanitizeCellValue(value) {
   }
 
   return text
+}
+
+function getResourceConfig(resourceValue) {
+  const resource = String(resourceValue || '')
+  const config = RESOURCE_CONFIG[resource]
+
+  if (!config) {
+    throw new Error('Tipo de registro inválido.')
+  }
+
+  return { resource: resource, config: config }
+}
+
+function getValidRecordRow(sheet, rowValue) {
+  const row = Number(rowValue)
+
+  if (!Number.isInteger(row) || row < 2 || row > sheet.getLastRow()) {
+    throw new Error('Este registro não foi encontrado. Atualize o painel e tente novamente.')
+  }
+
+  return row
+}
+
+function updateHealthRecord(spreadsheet, resourceValue, rowValue, data) {
+  const resourceInfo = getResourceConfig(resourceValue)
+  validateRecord(resourceInfo.resource, data, resourceInfo.config)
+  const sheet = getOrCreateSheet(spreadsheet, resourceInfo.config.sheetName, resourceInfo.config.headers)
+  const row = getValidRecordRow(sheet, rowValue)
+  const lock = LockService.getScriptLock()
+  lock.waitLock(10000)
+
+  try {
+    const values = resourceInfo.config.fields.map(function (field) {
+      if (field === 'weight') {
+        return Number(String(data[field]).replace(',', '.'))
+      }
+
+      return sanitizeCellValue(data[field])
+    })
+    sheet.getRange(row, 1, 1, values.length).setValues([values])
+    SpreadsheetApp.flush()
+    return { sheet: resourceInfo.config.sheetName, row: row }
+  } finally {
+    lock.releaseLock()
+  }
+}
+
+function deleteHealthRecord(spreadsheet, resourceValue, rowValue) {
+  const resourceInfo = getResourceConfig(resourceValue)
+  const sheet = getOrCreateSheet(spreadsheet, resourceInfo.config.sheetName, resourceInfo.config.headers)
+  const row = getValidRecordRow(sheet, rowValue)
+  const lock = LockService.getScriptLock()
+  lock.waitLock(10000)
+
+  try {
+    sheet.deleteRow(row)
+    SpreadsheetApp.flush()
+    return { sheet: resourceInfo.config.sheetName, row: row }
+  } finally {
+    lock.releaseLock()
+  }
 }
 
 function updateExamStatus(spreadsheet, rowValue, statusValue) {

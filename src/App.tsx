@@ -10,6 +10,16 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
 import {
   Dialog,
   DialogContent,
@@ -308,7 +318,7 @@ export default function App() {
   }
 
   const inputClassName =
-    'mt-2 w-full rounded-xl border-2 border-slate-300 bg-white px-4 py-3 text-lg text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-700 focus:ring-4 focus:ring-teal-100 disabled:bg-slate-100'
+    'mt-2 min-h-12 rounded-lg border-slate-200 bg-white px-4 py-3 text-lg text-slate-900 shadow-sm placeholder:text-slate-400 focus-visible:border-teal-600 focus-visible:ring-2 focus-visible:ring-teal-100 disabled:bg-slate-50'
 
   function renderFormFields() {
     if (!activeForm) {
@@ -319,8 +329,8 @@ export default function App() {
       const isDateField = type === 'date'
       return (
         <div className="block text-base font-bold text-slate-800">
-          <label htmlFor={name}>{label}{required ? ' *' : ''}</label>
-          <input
+          <Label htmlFor={name} className="text-base font-bold">{label}{required ? ' *' : ''}</Label>
+          <Input
             id={name}
             name={name}
             type={type}
@@ -363,8 +373,8 @@ export default function App() {
 
     const fieldWithChips = (label: string, name: string, chips: string[], required = false) => (
       <div className="block text-base font-bold text-slate-800">
-        <label htmlFor={name}>{label}{required ? ' *' : ''}</label>
-        <input
+        <Label htmlFor={name} className="text-base font-bold">{label}{required ? ' *' : ''}</Label>
+        <Input
           id={name}
           name={name}
           type="text"
@@ -391,9 +401,9 @@ export default function App() {
     )
 
     const textarea = (label: string, name: string, required = false) => (
-      <label className="block text-base font-bold text-slate-800" htmlFor={name}>
-        {label}{required ? ' *' : ''}
-        <textarea
+      <div className="block text-base font-bold text-slate-800">
+        <Label htmlFor={name} className="text-base font-bold">{label}{required ? ' *' : ''}</Label>
+        <Textarea
           id={name}
           name={name}
           value={formData[name] ?? ''}
@@ -402,13 +412,13 @@ export default function App() {
           rows={4}
           className={inputClassName}
         />
-      </label>
+      </div>
     )
 
     const textareaWithChips = (label: string, name: string, chips: string[], required = false) => (
       <div className="block text-base font-bold text-slate-800">
-        <label htmlFor={name}>{label}{required ? ' *' : ''}</label>
-        <textarea
+        <Label htmlFor={name} className="text-base font-bold">{label}{required ? ' *' : ''}</Label>
+        <Textarea
           id={name}
           name={name}
           value={formData[name] ?? ''}
@@ -439,23 +449,17 @@ export default function App() {
     )
 
     const select = (label: string, name: string, options: string[]) => (
-      <label className="block text-base font-bold text-slate-800" htmlFor={name}>
-        {label} *
-        <select
-          id={name}
-          name={name}
-          value={formData[name] ?? ''}
-          onChange={(event) => updateField(name, event.target.value)}
-          required
-          className={inputClassName}
-        >
-          {options.map((option) => (
-            <option key={option} value={option}>
-              {option}
-            </option>
-          ))}
-        </select>
-      </label>
+      <div className="block text-base font-bold text-slate-800">
+        <Label htmlFor={name} className="text-base font-bold">{label} *</Label>
+        <Select value={formData[name] ?? ''} onValueChange={(value) => updateField(name, value)}>
+          <SelectTrigger id={name} className={inputClassName}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {options.map((option) => <SelectItem key={option} value={option}>{option}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </div>
     )
 
     if (activeForm === 'consultation') {
@@ -501,7 +505,7 @@ export default function App() {
           {field('Data', 'date', 'date', true)}
           <label className="block text-base font-bold text-slate-800" htmlFor="weight">
             Peso em kg *
-            <input
+            <Input
               id="weight"
               name="weight"
               inputMode="decimal"
@@ -549,19 +553,19 @@ export default function App() {
     <main className={`min-h-screen bg-slate-50 px-4 py-6 sm:px-6 sm:py-10 transition-all duration-200 ${isLargeFont ? 'font-large' : ''}`}>
       {showSplash && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 px-4 py-6 text-center text-white">
-          <div className="max-w-md rounded-[2rem] border border-teal-300/30 bg-teal-900/95 px-8 py-10 shadow-2xl">
+          <Card className="max-w-md rounded-xl border-teal-300/20 bg-teal-900/95 px-8 py-10 text-white shadow-xl">
             <p className="text-sm uppercase tracking-[0.2em] text-teal-200">Olá, Beatriz</p>
             <h1 className="mt-4 text-4xl font-bold tracking-tight text-white">Carregando seus dados...</h1>
             <p className="mt-4 text-base leading-7 text-teal-100">
               Aguarde só um instante enquanto o aplicativo prepara as informações para você.
             </p>
-          </div>
+          </Card>
         </div>
       )}
       <div className="mx-auto max-w-5xl">
 
         {/* Barra de Acessibilidade */}
-        <div className="mb-6 flex justify-between items-center gap-4 flex-wrap bg-teal-50 border-2 border-teal-200/60 p-4 rounded-3xl">
+        <Card className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-xl border-teal-100 bg-teal-50/80 p-4 shadow-sm">
           <span className="text-base font-bold text-teal-900">Configuração de leitura:</span>
           <Button
             type="button"
@@ -572,15 +576,15 @@ export default function App() {
           >
             {isLargeFont ? '🔍 Usar Letra Normal' : '🔍 Usar Letra Grande (Recomendado)'}
           </Button>
-        </div>
+        </Card>
 
-        <header className="mb-8 rounded-3xl bg-teal-800 px-6 py-7 text-white shadow-soft sm:px-9">
+        <header className="mb-8 rounded-xl bg-teal-800 px-6 py-7 text-white shadow-lg shadow-teal-950/10 sm:px-9">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-base font-medium text-teal-100">Olá, Beatriz</p>
               <h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">Minha Saúde</h1>
             </div>
-            <div className="rounded-3xl bg-teal-700/90 px-4 py-3 text-right text-lg font-semibold text-teal-100 shadow-inner sm:px-5">
+            <div className="rounded-lg border border-white/10 bg-teal-700/70 px-4 py-3 text-right text-lg font-semibold text-teal-50 sm:px-5">
               <p className="text-sm uppercase tracking-[0.2em] text-teal-200">Horário atual</p>
               <p className="mt-1 text-2xl">{currentTime}</p>
             </div>
@@ -590,19 +594,19 @@ export default function App() {
           </p>
         </header>
 
-        <div className="mb-6 rounded-3xl bg-teal-50 px-6 py-5 text-base text-teal-900 shadow-soft border-2 border-teal-100">
+        <Card className="mb-6 rounded-xl border-teal-100 bg-teal-50/80 px-6 py-5 text-base text-teal-900 shadow-sm">
           <p className="font-extrabold text-lg text-teal-950">💡 Como usar</p>
           <ol className="mt-3 space-y-2 pl-5 text-base font-bold leading-7">
             <li>1. Clique no botão correspondente ao que quer registrar lá embaixo.</li>
             <li>2. Preencha os campos (apenas os marcados com <span className="font-extrabold text-teal-700">*</span> são obrigatórios).</li>
             <li>3. Toque no botão verde <span className="font-extrabold text-teal-700">Salvar informação</span>.</li>
           </ol>
-        </div>
+        </Card>
 
         {notice && (
           <div
             role="status"
-            className={`mb-6 rounded-2xl border-2 px-5 py-4 text-base font-extrabold ${
+            className={`mb-6 rounded-lg border px-5 py-4 text-base font-bold shadow-sm ${
               notice.type === 'success'
                 ? 'border-emerald-200 bg-emerald-50 text-emerald-950'
                 : 'border-rose-200 bg-rose-50 text-rose-950'
@@ -629,25 +633,25 @@ export default function App() {
           </div>
 
           <div className="large-font-summary grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Card className="border-2 border-slate-100 bg-white p-5 shadow-soft">
+            <Card className="rounded-xl border-slate-200/70 bg-white p-5 shadow-sm">
               <p className="text-base font-bold text-slate-600 flex items-center gap-1.5">📅 Próxima consulta</p>
               <p className="mt-3 text-xl font-extrabold leading-snug text-teal-900">
                 {isDashboardLoading ? 'Carregando...' : summary.nextConsultation}
               </p>
             </Card>
-            <Card className="border-2 border-slate-100 bg-white p-5 shadow-soft">
+            <Card className="rounded-xl border-slate-200/70 bg-white p-5 shadow-sm">
               <p className="text-base font-bold text-slate-600 flex items-center gap-1.5">💊 Remédios ativos</p>
               <p className="mt-3 text-3xl font-extrabold text-teal-900">
                 {isDashboardLoading ? '—' : summary.activeMedications}
               </p>
             </Card>
-            <Card className="border-2 border-slate-100 bg-white p-5 shadow-soft">
+            <Card className="rounded-xl border-slate-200/70 bg-white p-5 shadow-sm">
               <p className="text-base font-bold text-slate-600 flex items-center gap-1.5">⚖️ Último peso</p>
               <p className="mt-3 text-3xl font-extrabold text-teal-900">
                 {isDashboardLoading ? '—' : summary.lastWeight}
               </p>
             </Card>
-            <Card className="border-2 border-slate-100 bg-white p-5 shadow-soft">
+            <Card className="rounded-xl border-slate-200/70 bg-white p-5 shadow-sm">
               <p className="text-base font-bold text-slate-600 flex items-center gap-1.5">📄 Exames pendentes</p>
               <p className="mt-3 text-3xl font-extrabold text-teal-900">
                 {isDashboardLoading ? '—' : summary.pendingExams}
@@ -656,7 +660,7 @@ export default function App() {
           </div>
 
           <div className="large-font-details mt-6 grid gap-4 lg:grid-cols-2">
-            <article className="rounded-3xl bg-white p-5 shadow-soft border-2 border-slate-100">
+            <Card className="rounded-xl border-slate-200/70 bg-white p-5 shadow-sm">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-base font-extrabold text-slate-700 flex items-center gap-1.5">📋 Exames pendentes</p>
@@ -670,7 +674,7 @@ export default function App() {
                 summary.pendingExamsList.length > 0 ? (
                   <ul className="mt-5 space-y-3 text-slate-700">
                     {summary.pendingExamsList.map((item, index) => (
-                      <li key={index} className="rounded-2xl border-2 border-slate-200 bg-slate-50 px-4 py-3 font-semibold">
+                      <li key={index} className="rounded-lg border border-slate-200 bg-slate-50/70 px-4 py-3 font-semibold">
                         {item}
                       </li>
                     ))}
@@ -683,9 +687,9 @@ export default function App() {
               ) : !isDashboardLoading ? (
                 <p className="mt-5 text-sm font-medium text-slate-500">Nenhum exame pendente no momento.</p>
               ) : null}
-            </article>
+            </Card>
 
-            <article className="rounded-3xl bg-white p-5 shadow-soft border-2 border-slate-100">
+            <Card className="rounded-xl border-slate-200/70 bg-white p-5 shadow-sm">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-base font-extrabold text-slate-700 flex items-center gap-1.5">💊 Remédios em uso hoje</p>
@@ -698,7 +702,7 @@ export default function App() {
               {!isDashboardLoading && summary.activeMedicationsList.length > 0 ? (
                 <ul className="mt-5 space-y-3 text-slate-700">
                   {summary.activeMedicationsList.map((item, index) => (
-                    <li key={index} className="rounded-2xl border-2 border-slate-200 bg-slate-50 px-4 py-3 font-semibold">
+                    <li key={index} className="rounded-lg border border-slate-200 bg-slate-50/70 px-4 py-3 font-semibold">
                       {item}
                     </li>
                   ))}
@@ -706,10 +710,10 @@ export default function App() {
               ) : !isDashboardLoading ? (
                 <p className="mt-5 text-sm font-medium text-slate-500">Nenhum medicamento ativo no momento.</p>
               ) : null}
-            </article>
+            </Card>
           </div>
 
-          <section className="mt-6 rounded-3xl bg-white p-5 shadow-soft border-2 border-slate-100">
+          <Card className="mt-6 rounded-xl border-slate-200/70 bg-white p-5 shadow-sm">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-base font-extrabold text-slate-700 flex items-center gap-1.5">📅 Próximas consultas (Agenda)</p>
@@ -719,7 +723,7 @@ export default function App() {
             {!isDashboardLoading && summary.upcomingConsultations.length > 0 ? (
               <ul className="mt-5 space-y-3 text-slate-700">
                 {summary.upcomingConsultations.map((item, index) => (
-                  <li key={index} className="rounded-2xl border-2 border-slate-200 bg-slate-50 px-4 py-3 font-semibold">
+                  <li key={index} className="rounded-lg border border-slate-200 bg-slate-50/70 px-4 py-3 font-semibold">
                     {item}
                   </li>
                 ))}
@@ -727,7 +731,7 @@ export default function App() {
             ) : !isDashboardLoading ? (
               <p className="mt-5 text-sm font-medium text-slate-500">Nenhuma consulta agendada para os próximos dias.</p>
             ) : null}
-          </section>
+          </Card>
 
           <section className="mt-8" aria-labelledby="records-title">
             <h2 id="records-title" className="text-2xl font-extrabold text-slate-900">
@@ -738,7 +742,7 @@ export default function App() {
             </p>
 
             <div className="mt-5 space-y-5">
-              <article className="rounded-3xl border-2 border-slate-100 bg-white p-5 shadow-soft">
+              <Card className="rounded-xl border-slate-200/70 bg-white p-5 shadow-sm">
                 <h3 className="text-xl font-extrabold text-teal-950">🔬 Exames</h3>
                 <p className="mt-1 text-sm font-semibold text-slate-500">
                   Para atualizar, escolha um novo status no próprio exame.
@@ -746,7 +750,7 @@ export default function App() {
                 {summary.records.exams.length > 0 ? (
                   <div className="large-font-details mt-4 grid gap-4 lg:grid-cols-2">
                     {summary.records.exams.map((exam) => (
-                      <div key={exam.row} className="rounded-2xl border-2 border-slate-200 bg-slate-50 p-4">
+                      <div key={exam.row} className="rounded-lg border border-slate-200 bg-slate-50/70 p-4">
                         <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
                           <div className="min-w-0 flex-1">
                             <p className="break-words text-lg font-extrabold text-slate-900">{exam.examName}</p>
@@ -760,20 +764,26 @@ export default function App() {
                           <div><dt className="font-extrabold">Resultado</dt><dd>{exam.resultSummary || 'Ainda não informado'}</dd></div>
                           <div><dt className="font-extrabold">Observações</dt><dd>{exam.notes || 'Nenhuma observação'}</dd></div>
                         </dl>
-                        <label className="mt-4 block font-extrabold text-slate-800" htmlFor={`exam-status-${exam.row}`}>
-                          Alterar status
-                          <select
-                            id={`exam-status-${exam.row}`}
+                        <div className="mt-4 block font-extrabold text-slate-800">
+                          <Label htmlFor={`exam-status-${exam.row}`} className="text-base font-extrabold">Alterar status</Label>
+                          <Select
                             value={exam.status}
                             disabled={updatingExamRow === exam.row}
-                            onChange={(event) => void handleExamStatusChange(exam.row, event.target.value as ExamStatus)}
-                            className="mt-2 w-full rounded-xl border-2 border-teal-600 bg-white px-4 py-3 text-base font-extrabold text-teal-950 outline-none focus:ring-4 focus:ring-teal-100 disabled:opacity-60"
+                            onValueChange={(value) => void handleExamStatusChange(exam.row, value as ExamStatus)}
                           >
-                            <option value="Pendente">Pendente</option>
-                            <option value="Realizado">Realizado</option>
-                            <option value="Avaliado">Avaliado</option>
-                          </select>
-                        </label>
+                            <SelectTrigger
+                              id={`exam-status-${exam.row}`}
+                              className="mt-2 min-h-12 w-full rounded-lg border-teal-300 bg-white px-4 py-3 text-base font-extrabold text-teal-950 shadow-sm focus:ring-2 focus:ring-teal-100"
+                            >
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="Pendente">Pendente</SelectItem>
+                              <SelectItem value="Realizado">Realizado</SelectItem>
+                              <SelectItem value="Avaliado">Avaliado</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
                         {updatingExamRow === exam.row && (
                           <p className="mt-2 font-bold text-teal-800" role="status">Salvando novo status...</p>
                         )}
@@ -783,15 +793,15 @@ export default function App() {
                 ) : (
                   <p className="mt-4 font-semibold text-slate-500">Nenhum exame registrado ainda.</p>
                 )}
-              </article>
+              </Card>
 
               <div className="large-font-details grid gap-5 lg:grid-cols-2">
-                <article className="rounded-3xl border-2 border-slate-100 bg-white p-5 shadow-soft">
+                <Card className="rounded-xl border-slate-200/70 bg-white p-5 shadow-sm">
                   <h3 className="text-xl font-extrabold text-teal-950">🩺 Consultas</h3>
                   {summary.records.consultations.length > 0 ? (
                     <ul className="mt-4 space-y-3">
                       {summary.records.consultations.map((item) => (
-                        <li key={item.row} className="rounded-2xl border-2 border-slate-200 bg-slate-50 p-4 text-slate-700">
+                        <li key={item.row} className="rounded-lg border border-slate-200 bg-slate-50/70 p-4 text-slate-700">
                           <p className="text-lg font-extrabold text-slate-900">{item.doctor}</p>
                           <p className="font-bold">{item.date} · {item.specialty}</p>
                           <p className="mt-2"><span className="font-extrabold">Local:</span> {item.location || 'Não informado'}</p>
@@ -800,14 +810,14 @@ export default function App() {
                       ))}
                     </ul>
                   ) : <p className="mt-4 font-semibold text-slate-500">Nenhuma consulta registrada ainda.</p>}
-                </article>
+                </Card>
 
-                <article className="rounded-3xl border-2 border-slate-100 bg-white p-5 shadow-soft">
+                <Card className="rounded-xl border-slate-200/70 bg-white p-5 shadow-sm">
                   <h3 className="text-xl font-extrabold text-teal-950">💊 Medicamentos</h3>
                   {summary.records.medications.length > 0 ? (
                     <ul className="mt-4 space-y-3">
                       {summary.records.medications.map((item) => (
-                        <li key={item.row} className="rounded-2xl border-2 border-slate-200 bg-slate-50 p-4 text-slate-700">
+                        <li key={item.row} className="rounded-lg border border-slate-200 bg-slate-50/70 p-4 text-slate-700">
                           <p className="text-lg font-extrabold text-slate-900">{item.name}</p>
                           <p className="font-bold">{item.dosage} · {item.schedule}</p>
                           <p className="mt-2"><span className="font-extrabold">Período:</span> {item.startDate}{item.endDate ? ` até ${item.endDate}` : ' em diante'}</p>
@@ -816,14 +826,14 @@ export default function App() {
                       ))}
                     </ul>
                   ) : <p className="mt-4 font-semibold text-slate-500">Nenhum medicamento registrado ainda.</p>}
-                </article>
+                </Card>
 
-                <article className="rounded-3xl border-2 border-slate-100 bg-white p-5 shadow-soft">
+                <Card className="rounded-xl border-slate-200/70 bg-white p-5 shadow-sm">
                   <h3 className="text-xl font-extrabold text-teal-950">⚖️ Histórico de peso</h3>
                   {summary.records.weights.length > 0 ? (
                     <ul className="mt-4 space-y-3">
                       {summary.records.weights.map((item) => (
-                        <li key={item.row} className="rounded-2xl border-2 border-slate-200 bg-slate-50 p-4 text-slate-700">
+                        <li key={item.row} className="rounded-lg border border-slate-200 bg-slate-50/70 p-4 text-slate-700">
                           <p className="text-lg font-extrabold text-slate-900">{item.weight}</p>
                           <p className="font-bold">{item.date}</p>
                           <p className="mt-2"><span className="font-extrabold">Observações:</span> {item.notes || 'Nenhuma'}</p>
@@ -831,14 +841,14 @@ export default function App() {
                       ))}
                     </ul>
                   ) : <p className="mt-4 font-semibold text-slate-500">Nenhum peso registrado ainda.</p>}
-                </article>
+                </Card>
 
-                <article className="rounded-3xl border-2 border-slate-100 bg-white p-5 shadow-soft">
+                <Card className="rounded-xl border-slate-200/70 bg-white p-5 shadow-sm">
                   <h3 className="text-xl font-extrabold text-teal-950">🤒 Sintomas</h3>
                   {summary.records.symptoms.length > 0 ? (
                     <ul className="mt-4 space-y-3">
                       {summary.records.symptoms.map((item) => (
-                        <li key={item.row} className="rounded-2xl border-2 border-slate-200 bg-slate-50 p-4 text-slate-700">
+                        <li key={item.row} className="rounded-lg border border-slate-200 bg-slate-50/70 p-4 text-slate-700">
                           <p className="text-lg font-extrabold text-slate-900">{item.description}</p>
                           <p className="font-bold">{item.date} · Intensidade {item.intensity}</p>
                           <p className="mt-2"><span className="font-extrabold">Observações:</span> {item.notes || 'Nenhuma'}</p>
@@ -846,7 +856,7 @@ export default function App() {
                       ))}
                     </ul>
                   ) : <p className="mt-4 font-semibold text-slate-500">Nenhum sintoma registrado ainda.</p>}
-                </article>
+                </Card>
               </div>
             </div>
           </section>
@@ -865,7 +875,7 @@ export default function App() {
                 type="button"
                 onClick={() => openForm(form.key)}
                 variant="secondary"
-                className="h-auto min-h-[8.5rem] flex-col items-start justify-center rounded-2xl border-2 border-slate-300 bg-white px-6 py-6 text-left shadow-soft transition hover:-translate-y-0.5 hover:border-teal-600 hover:bg-teal-50 focus:ring-teal-200"
+                className="h-auto min-h-[8.5rem] flex-col items-start justify-center rounded-xl border border-slate-200 bg-white px-6 py-6 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-teal-300 hover:bg-teal-50/70 hover:shadow-md focus:ring-teal-200"
               >
                 <span className="block text-xl font-extrabold text-slate-900">{form.title}</span>
                 <span className="mt-2 block text-base font-bold leading-relaxed text-slate-600">{form.description}</span>
@@ -885,7 +895,7 @@ export default function App() {
       >
         {activeConfig && (
           <DialogContent
-            className="rounded-3xl border-2 border-teal-100 bg-white shadow-2xl"
+            className="rounded-xl border border-slate-200 bg-white shadow-xl"
             onEscapeKeyDown={(event) => event.preventDefault()}
             onPointerDownOutside={(event) => event.preventDefault()}
           >
@@ -907,14 +917,14 @@ export default function App() {
                   onClick={closeForm}
                   disabled={isSubmitting}
                   variant="secondary"
-                  className="rounded-2xl border-2 border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+                  className="rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
                 >
                   Cancelar
                 </Button>
                 <Button
                   type="submit"
                   disabled={isSubmitting}
-                  className="rounded-2xl bg-teal-700 text-white shadow-md hover:bg-teal-800 focus:ring-teal-200"
+                  className="rounded-lg bg-teal-700 text-white shadow-sm hover:bg-teal-800 focus:ring-teal-200"
                 >
                   {isSubmitting ? '⏳ Salvando...' : '💾 Salvar informação'}
                 </Button>

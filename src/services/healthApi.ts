@@ -1,5 +1,63 @@
 export type Resource = 'consultations' | 'exams' | 'medications' | 'weights' | 'symptoms'
 
+export type ExamStatus = 'Pendente' | 'Realizado' | 'Avaliado'
+
+export type ConsultationRecord = {
+  row: number
+  date: string
+  doctor: string
+  specialty: string
+  location: string
+  notes: string
+  createdAt: string
+}
+
+export type ExamRecord = {
+  row: number
+  date: string
+  examName: string
+  resultSummary: string
+  status: ExamStatus
+  notes: string
+  createdAt: string
+}
+
+export type MedicationRecord = {
+  row: number
+  name: string
+  dosage: string
+  schedule: string
+  startDate: string
+  endDate: string
+  notes: string
+  createdAt: string
+}
+
+export type WeightRecord = {
+  row: number
+  date: string
+  weight: string
+  notes: string
+  createdAt: string
+}
+
+export type SymptomRecord = {
+  row: number
+  date: string
+  description: string
+  intensity: string
+  notes: string
+  createdAt: string
+}
+
+export type HealthRecords = {
+  consultations: ConsultationRecord[]
+  exams: ExamRecord[]
+  medications: MedicationRecord[]
+  weights: WeightRecord[]
+  symptoms: SymptomRecord[]
+}
+
 export type DashboardSummary = {
   nextConsultation: string
   upcomingConsultations: string[]
@@ -8,6 +66,7 @@ export type DashboardSummary = {
   lastWeight: string
   pendingExams: number
   pendingExamsList: string[]
+  records: HealthRecords
 }
 
 type ApiResponse<T> = {
@@ -18,9 +77,11 @@ type ApiResponse<T> = {
 }
 
 type RequestPayload = {
-  action: 'summary' | 'ping' | 'create'
+  action: 'summary' | 'ping' | 'create' | 'updateExamStatus'
   resource?: Resource
   data?: Record<string, string>
+  row?: number
+  status?: ExamStatus
 }
 
 const apiUrl = import.meta.env.VITE_GOOGLE_APPS_SCRIPT_URL?.trim()
@@ -29,7 +90,7 @@ const spreadsheetId = import.meta.env.VITE_GOOGLE_SHEET_ID?.trim()
 
 function getConfigurationError() {
   if (!apiUrl || !apiToken || !spreadsheetId) {
-    return 'A integração ainda não foi configurada. Revise o arquivo .env.local.'
+    return 'A integração ainda não foi configurada. Revise o arquivo .env.'
   }
 
   return null
@@ -92,6 +153,14 @@ export async function saveHealthRecord(resource: Resource, data: Record<string, 
     action: 'create',
     resource,
     data,
+  })
+}
+
+export async function updateExamStatus(row: number, status: ExamStatus) {
+  return request<{ row: number; status: ExamStatus }>({
+    action: 'updateExamStatus',
+    row,
+    status,
   })
 }
 

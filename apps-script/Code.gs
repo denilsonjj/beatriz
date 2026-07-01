@@ -70,6 +70,14 @@ function doPost(e) {
       })
     }
 
+    if (payload.action === 'updateExamStatus') {
+      return createJsonResponse({
+        success: true,
+        message: 'Status do exame atualizado com sucesso.',
+        data: updateExamStatus(spreadsheet, payload.row, payload.status),
+      })
+    }
+
     if (payload.action !== 'create') {
       throw new Error('Ação inválida.')
     }
@@ -291,6 +299,44 @@ function sanitizeCellValue(value) {
   return text
 }
 
+function updateExamStatus(spreadsheet, rowValue, statusValue) {
+  const row = Number(rowValue)
+  const status = String(statusValue || '').trim()
+
+  if (!Number.isInteger(row) || row < 2) {
+    throw new Error('Não foi possível identificar o exame escolhido.')
+  }
+
+  if (['Pendente', 'Realizado', 'Avaliado'].indexOf(status) === -1) {
+    throw new Error('Selecione um status válido para o exame.')
+  }
+
+  const sheet = getOrCreateSheet(
+    spreadsheet,
+    RESOURCE_CONFIG.exams.sheetName,
+    RESOURCE_CONFIG.exams.headers,
+  )
+
+  const lock = LockService.getScriptLock()
+  lock.waitLock(10000)
+
+  try {
+    if (row > sheet.getLastRow() || !String(sheet.getRange(row, 2).getDisplayValue()).trim()) {
+      throw new Error('Este exame não foi encontrado. Atualize o painel e tente novamente.')
+    }
+
+    sheet.getRange(row, 4).setValue(status)
+    SpreadsheetApp.flush()
+
+    return {
+      row: row,
+      status: status,
+    }
+  } finally {
+    lock.releaseLock()
+  }
+}
+
 function getDashboardSummary(spreadsheet) {
   const today = getTodayIso()
   const consultations = getRows(getOrCreateSheet(spreadsheet, RESOURCE_CONFIG.consultations.sheetName, RESOURCE_CONFIG.consultations.headers))
@@ -320,6 +366,8 @@ function getDashboardSummary(spreadsheet) {
   const activeMedicationsList = activeMedicationsRows.map(formatMedication)
 
   const sortedWeights = weights
+    .slice()
+    .reverse()
     .filter(function (row) {
       return normalizeDate(row[0]) && row[1] !== ''
     })
@@ -345,7 +393,90 @@ function getDashboardSummary(spreadsheet) {
     lastWeight: lastWeight,
     pendingExams: pendingExams,
     pendingExamsList: pendingExamsList,
+    records: {
+      consultations: buildConsultationRecords(consultations),
+      exams: buildExamRecords(exams),
+      medications: buildMedicationRecords(medications),
+      weights: buildWeightRecords(weights),
+      symptoms: buildSymptomRecords(
+        getRows(getOrCreateSheet(spreadsheet, RESOURCE_CONFIG.symptoms.sheetName, RESOURCE_CONFIG.symptoms.headers)),
+      ),
+    },
   }
+}
+
+function newestFirst(rows, mapper) {
+  return rows.map(function (row, index) {
+    return mapper(row, index + 2)
+  }).reverse()
+}
+
+function buildConsultationRecords(rows) {
+  return newestFirst(rows, function (row, rowNumber) {
+    return {
+      row: rowNumber,
+      date: formatDateForDisplay(row[0]),
+      doctor: String(row[1] || '').trim(),
+      specialty: String(row[2] || '').trim(),
+      location: String(row[3] || '').trim(),
+      notes: String(row[4] || '').trim(),
+      createdAt: String(row[5] || '').trim(),
+    }
+  })
+}
+
+function buildExamRecords(rows) {
+  return newestFirst(rows, function (row, rowNumber) {
+    return {
+      row: rowNumber,
+      date: formatDateForDisplay(row[0]),
+      examName: String(row[1] || '').trim(),
+      resultSummary: String(row[2] || '').trim(),
+      status: String(row[3] || '').trim(),
+      notes: String(row[4] || '').trim(),
+      createdAt: String(row[5] || '').trim(),
+    }
+  })
+}
+
+function buildMedicationRecords(rows) {
+  return newestFirst(rows, function (row, rowNumber) {
+    return {
+      row: rowNumber,
+      name: String(row[0] || '').trim(),
+      dosage: String(row[1] || '').trim(),
+      schedule: String(row[2] || '').trim(),
+      startDate: formatDateForDisplay(row[3]),
+      endDate: formatDateForDisplay(row[4]),
+      notes: String(row[5] || '').trim(),
+      createdAt: String(row[6] || '').trim(),
+    }
+  })
+}
+
+function buildWeightRecords(rows) {
+  return newestFirst(rows, function (row, rowNumber) {
+    return {
+      row: rowNumber,
+      date: formatDateForDisplay(row[0]),
+      weight: formatWeight(row[1]),
+      notes: String(row[2] || '').trim(),
+      createdAt: String(row[3] || '').trim(),
+    }
+  })
+}
+
+function buildSymptomRecords(rows) {
+  return newestFirst(rows, function (row, rowNumber) {
+    return {
+      row: rowNumber,
+      date: formatDateForDisplay(row[0]),
+      description: String(row[1] || '').trim(),
+      intensity: String(row[2] || '').trim(),
+      notes: String(row[3] || '').trim(),
+      createdAt: String(row[4] || '').trim(),
+    }
+  })
 }
 
 function formatMedication(row) {

@@ -3,10 +3,22 @@ import {
   DashboardSummary,
   ExamStatus,
   Resource,
+  deleteHealthRecord,
+  editHealthRecord,
   loadDashboardSummary,
   saveHealthRecord,
   updateExamStatus,
 } from './services/healthApi'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -20,6 +32,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Dialog,
   DialogContent,
@@ -41,6 +54,9 @@ type Notice = {
   type: 'success' | 'error'
   text: string
 } | null
+
+type EditTarget = { resource: Resource; row: number } | null
+type DeleteTarget = { resource: Resource; row: number; label: string } | null
 
 const emptySummary: DashboardSummary = {
   nextConsultation: 'Nenhuma agendada',
@@ -98,6 +114,35 @@ function todayIso() {
   return new Date(now.getTime() - timezoneOffset).toISOString().slice(0, 10)
 }
 
+function isoToBrazilian(value: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : value
+}
+
+function brazilianToIso(value: string) {
+  const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(value.trim())
+  if (!match) return null
+  const [, day, month, year] = match
+  const date = new Date(Number(year), Number(month) - 1, Number(day))
+  if (date.getFullYear() !== Number(year) || date.getMonth() !== Number(month) - 1 || date.getDate() !== Number(day)) return null
+  return `${year}-${month}-${day}`
+}
+
+function formatDateWhileTyping(value: string) {
+  const digits = value.replace(/\D/g, '').slice(0, 8)
+  if (digits.length <= 2) return digits
+  if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`
+  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`
+}
+
+function normalizeDatesForApi(data: Record<string, string>) {
+  const normalized = { ...data }
+  for (const field of ['date', 'startDate', 'endDate']) {
+    if (normalized[field]) normalized[field] = brazilianToIso(normalized[field]) ?? normalized[field]
+  }
+  return normalized
+}
+
 function getCurrentTime() {
   return new Date().toLocaleTimeString('pt-BR', {
     hour: '2-digit',
@@ -107,7 +152,7 @@ function getCurrentTime() {
 }
 
 function getInitialFormData(form: FormKey): Record<string, string> {
-  const today = todayIso()
+  const today = isoToBrazilian(todayIso())
 
   switch (form) {
     case 'consultation':
@@ -167,7 +212,13 @@ function getClientValidationError(form: FormKey, data: Record<string, string>) {
   }
 
   if (form === 'medication' && data.endDate && data.endDate < data.startDate) {
-    return 'A data de término não pode ser anterior à data de início.'
+    const startDate = brazilianToIso(data.startDate)
+    const endDate = brazilianToIso(data.endDate)
+    if (startDate && endDate && endDate < startDate) return 'A data de término não pode ser anterior à data de início.'
+  }
+
+  for (const field of ['date', 'startDate', 'endDate']) {
+    if (data[field] && !brazilianToIso(data[field])) return 'Informe a data no formato DD/MM/AAAA.'
   }
 
   return null
@@ -178,6 +229,9 @@ export default function App() {
   const [isDashboardLoading, setIsDashboardLoading] = useState(true)
   const [activeForm, setActiveForm] = useState<FormKey | null>(null)
   const [formData, setFormData] = useState<Record<string, string>>({})
+  const [editTarget, setEditTarget] = useState<EditTarget>(null)
+  const [deleteTarget, setDeleteTarget] = useState<DeleteTarget>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [updatingExamRow, setUpdatingExamRow] = useState<number | null>(null)
   const [notice, setNotice] = useState<Notice>(null)
@@ -253,13 +307,22 @@ export default function App() {
 
   function openForm(form: FormKey) {
     setNotice(null)
+    setEditTarget(null)
     setActiveForm(form)
     setFormData(getInitialFormData(form))
+  }
+
+  function openEditForm(form: FormKey, resource: Resource, row: number, data: Record<string, string>) {
+    setNotice(null)
+    setEditTarget({ resource, row })
+    setActiveForm(form)
+    setFormData(data)
   }
 
   function closeForm() {
     if (!isSubmitting) {
       setActiveForm(null)
+      setEditTarget(null)
     }
   }
 
@@ -285,10 +348,13 @@ export default function App() {
     setNotice(null)
 
     try {
-      await saveHealthRecord(activeConfig.resource, formData)
+      const apiData = normalizeDatesForApi(formData)
+      if (editTarget) await editHealthRecord(editTarget.resource, editTarget.row, apiData)
+      else await saveHealthRecord(activeConfig.resource, apiData)
       await refreshDashboard()
       setActiveForm(null)
-      setNotice({ type: 'success', text: '🎉 Informação salva com sucesso no Google Sheets!' })
+      setEditTarget(null)
+      setNotice({ type: 'success', text: editTarget ? '✅ Registro atualizado com sucesso!' : '🎉 Informação salva com sucesso no Google Sheets!' })
     } catch (error) {
       setNotice({
         type: 'error',
@@ -296,6 +362,22 @@ export default function App() {
       })
     } finally {
       setIsSubmitting(false)
+    }
+  }
+
+  async function handleDelete() {
+    if (!deleteTarget) return
+    setIsDeleting(true)
+    setNotice(null)
+    try {
+      await deleteHealthRecord(deleteTarget.resource, deleteTarget.row)
+      await refreshDashboard()
+      setDeleteTarget(null)
+      setNotice({ type: 'success', text: '✅ Registro excluído definitivamente.' })
+    } catch (error) {
+      setNotice({ type: 'error', text: error instanceof Error ? `❌ ${error.message}` : '❌ Não foi possível excluir o registro.' })
+    } finally {
+      setIsDeleting(false)
     }
   }
 
@@ -320,6 +402,19 @@ export default function App() {
   const inputClassName =
     'mt-2 min-h-12 rounded-lg border-slate-200 bg-white px-4 py-3 text-lg text-slate-900 shadow-sm placeholder:text-slate-400 focus-visible:border-teal-600 focus-visible:ring-2 focus-visible:ring-teal-100 disabled:bg-slate-50'
 
+  function recordActions(form: FormKey, resource: Resource, row: number, label: string, data: Record<string, string>) {
+    return (
+      <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-200 pt-4">
+        <Button type="button" variant="outline" onClick={() => openEditForm(form, resource, row, data)} className="border-teal-200 bg-white text-teal-800 hover:bg-teal-50">
+          ✏️ Editar
+        </Button>
+        <Button type="button" variant="outline" onClick={() => setDeleteTarget({ resource, row, label })} className="border-rose-200 bg-white text-rose-700 hover:bg-rose-50">
+          🗑️ Excluir
+        </Button>
+      </div>
+    )
+  }
+
   function renderFormFields() {
     if (!activeForm) {
       return null
@@ -333,9 +428,11 @@ export default function App() {
           <Input
             id={name}
             name={name}
-            type={type}
+            type={isDateField ? 'text' : type}
+            inputMode={isDateField ? 'numeric' : undefined}
+            placeholder={isDateField ? 'DD/MM/AAAA' : undefined}
             value={formData[name] ?? ''}
-            onChange={(event) => updateField(name, event.target.value)}
+            onChange={(event) => updateField(name, isDateField ? formatDateWhileTyping(event.target.value) : event.target.value)}
             required={required}
             className={inputClassName}
           />
@@ -343,7 +440,7 @@ export default function App() {
             <div className="mt-2 flex flex-wrap gap-2">
               <Button
                 type="button"
-                onClick={() => updateField(name, todayIso())}
+                onClick={() => updateField(name, isoToBrazilian(todayIso()))}
                 variant="outline"
                 size="sm"
                 className="bg-teal-50 text-teal-800 hover:bg-teal-100"
@@ -357,7 +454,7 @@ export default function App() {
                   yesterday.setDate(yesterday.getDate() - 1)
                   const timezoneOffset = yesterday.getTimezoneOffset() * 60_000
                   const yesterdayIso = new Date(yesterday.getTime() - timezoneOffset).toISOString().slice(0, 10)
-                  updateField(name, yesterdayIso)
+                  updateField(name, isoToBrazilian(yesterdayIso))
                 }}
                 variant="outline"
                 size="sm"
@@ -597,9 +694,9 @@ export default function App() {
         <Card className="mb-6 rounded-xl border-teal-100 bg-teal-50/80 px-6 py-5 text-base text-teal-900 shadow-sm">
           <p className="font-extrabold text-lg text-teal-950">💡 Como usar</p>
           <ol className="mt-3 space-y-2 pl-5 text-base font-bold leading-7">
-            <li>1. Clique no botão correspondente ao que quer registrar lá embaixo.</li>
-            <li>2. Preencha os campos (apenas os marcados com <span className="font-extrabold text-teal-700">*</span> são obrigatórios).</li>
-            <li>3. Toque no botão verde <span className="font-extrabold text-teal-700">Salvar informação</span>.</li>
+            <li>1. Use <span className="font-extrabold text-teal-700">Visão geral</span> para acompanhar a saúde.</li>
+            <li>2. Use <span className="font-extrabold text-teal-700">Adicionar</span> para registrar uma informação nova.</li>
+            <li>3. Use <span className="font-extrabold text-teal-700">Meus registros</span> para editar ou excluir informações.</li>
           </ol>
         </Card>
 
@@ -616,6 +713,14 @@ export default function App() {
           </div>
         )}
 
+        <Tabs defaultValue="overview">
+          <TabsList aria-label="Áreas do aplicativo" className="app-tabs-list sticky top-2 z-20 mb-7 rounded-xl bg-slate-100/95 shadow-sm backdrop-blur">
+            <TabsTrigger value="overview">📊 Visão geral</TabsTrigger>
+            <TabsTrigger value="add">➕ Adicionar</TabsTrigger>
+            <TabsTrigger value="records">🗂️ Meus registros</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="overview">
         <section aria-labelledby="dashboard-title">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <h2 id="dashboard-title" className="text-2xl font-extrabold text-slate-900">
@@ -733,6 +838,10 @@ export default function App() {
             ) : null}
           </Card>
 
+        </section>
+          </TabsContent>
+
+          <TabsContent value="records">
           <section className="mt-8" aria-labelledby="records-title">
             <h2 id="records-title" className="text-2xl font-extrabold text-slate-900">
               🗂️ Meus registros detalhados
@@ -787,6 +896,10 @@ export default function App() {
                         {updatingExamRow === exam.row && (
                           <p className="mt-2 font-bold text-teal-800" role="status">Salvando novo status...</p>
                         )}
+                        {recordActions('exam', 'exams', exam.row, exam.examName, {
+                          date: exam.date, examName: exam.examName, resultSummary: exam.resultSummary,
+                          status: exam.status, notes: exam.notes,
+                        })}
                       </div>
                     ))}
                   </div>
@@ -806,6 +919,10 @@ export default function App() {
                           <p className="font-bold">{item.date} · {item.specialty}</p>
                           <p className="mt-2"><span className="font-extrabold">Local:</span> {item.location || 'Não informado'}</p>
                           <p><span className="font-extrabold">Observações:</span> {item.notes || 'Nenhuma'}</p>
+                          {recordActions('consultation', 'consultations', item.row, item.doctor, {
+                            date: item.date, doctor: item.doctor, specialty: item.specialty,
+                            location: item.location, notes: item.notes,
+                          })}
                         </li>
                       ))}
                     </ul>
@@ -822,6 +939,10 @@ export default function App() {
                           <p className="font-bold">{item.dosage} · {item.schedule}</p>
                           <p className="mt-2"><span className="font-extrabold">Período:</span> {item.startDate}{item.endDate ? ` até ${item.endDate}` : ' em diante'}</p>
                           <p><span className="font-extrabold">Observações:</span> {item.notes || 'Nenhuma'}</p>
+                          {recordActions('medication', 'medications', item.row, item.name, {
+                            name: item.name, dosage: item.dosage, schedule: item.schedule,
+                            startDate: item.startDate, endDate: item.endDate, notes: item.notes,
+                          })}
                         </li>
                       ))}
                     </ul>
@@ -837,6 +958,9 @@ export default function App() {
                           <p className="text-lg font-extrabold text-slate-900">{item.weight}</p>
                           <p className="font-bold">{item.date}</p>
                           <p className="mt-2"><span className="font-extrabold">Observações:</span> {item.notes || 'Nenhuma'}</p>
+                          {recordActions('weight', 'weights', item.row, item.weight, {
+                            date: item.date, weight: item.weight.replace(' kg', ''), notes: item.notes,
+                          })}
                         </li>
                       ))}
                     </ul>
@@ -852,6 +976,9 @@ export default function App() {
                           <p className="text-lg font-extrabold text-slate-900">{item.description}</p>
                           <p className="font-bold">{item.date} · Intensidade {item.intensity}</p>
                           <p className="mt-2"><span className="font-extrabold">Observações:</span> {item.notes || 'Nenhuma'}</p>
+                          {recordActions('symptom', 'symptoms', item.row, item.description, {
+                            date: item.date, description: item.description, intensity: item.intensity, notes: item.notes,
+                          })}
                         </li>
                       ))}
                     </ul>
@@ -860,9 +987,10 @@ export default function App() {
               </div>
             </div>
           </section>
-        </section>
+          </TabsContent>
 
-        <section className="mt-10" aria-labelledby="actions-title">
+          <TabsContent value="add">
+        <section aria-labelledby="actions-title">
           <h2 id="actions-title" className="text-2xl font-extrabold text-slate-900">
             📝 Registrar uma informação nova
           </h2>
@@ -883,6 +1011,8 @@ export default function App() {
             ))}
           </div>
         </section>
+          </TabsContent>
+        </Tabs>
       </div>
 
       <Dialog
@@ -901,7 +1031,7 @@ export default function App() {
           >
             <DialogHeader className="border-b border-slate-100 pb-4">
               <DialogTitle id="form-title" className="text-2xl font-extrabold text-teal-950">
-                {activeConfig.title}
+                {editTarget ? activeConfig.title.replace('Registrar', 'Editar') : activeConfig.title}
               </DialogTitle>
               <DialogDescription className="text-base font-semibold leading-relaxed text-slate-600">
                 {activeConfig.description}
@@ -926,13 +1056,30 @@ export default function App() {
                   disabled={isSubmitting}
                   className="rounded-lg bg-teal-700 text-white shadow-sm hover:bg-teal-800 focus:ring-teal-200"
                 >
-                  {isSubmitting ? '⏳ Salvando...' : '💾 Salvar informação'}
+                  {isSubmitting ? '⏳ Salvando...' : editTarget ? '💾 Salvar alterações' : '💾 Salvar informação'}
                 </Button>
               </div>
             </form>
           </DialogContent>
         )}
       </Dialog>
+
+      <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && !isDeleting && setDeleteTarget(null)}>
+        {deleteTarget && (
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle className="text-2xl font-extrabold text-slate-900">Excluir este registro?</AlertDialogTitle>
+              <AlertDialogDescription className="text-base leading-relaxed text-slate-600">
+                Você está prestes a excluir <strong>“{deleteTarget.label}”</strong>. Essa informação será removida definitivamente da planilha e não poderá ser recuperada.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel asChild><Button type="button" variant="outline" disabled={isDeleting}>Cancelar</Button></AlertDialogCancel>
+              <AlertDialogAction asChild><Button type="button" disabled={isDeleting} onClick={() => void handleDelete()} className="bg-rose-600 text-white hover:bg-rose-700">{isDeleting ? 'Excluindo...' : 'Sim, excluir'}</Button></AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        )}
+      </AlertDialog>
     </main>
   )
 }

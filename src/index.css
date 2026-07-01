@@ -108,6 +108,11 @@ button:disabled {
 }
 
 @media (max-width: 640px) {
+  .app-tabs-list {
+    grid-template-columns: minmax(0, 1fr);
+    position: static;
+  }
+
   .font-large .large-font-summary {
     grid-template-columns: minmax(0, 1fr) !important;
   }

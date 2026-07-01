@@ -77,7 +77,7 @@ type ApiResponse<T> = {
 }
 
 type RequestPayload = {
-  action: 'summary' | 'ping' | 'create' | 'updateExamStatus'
+  action: 'summary' | 'ping' | 'create' | 'update' | 'delete' | 'updateExamStatus'
   resource?: Resource
   data?: Record<string, string>
   row?: number
@@ -153,6 +153,23 @@ export async function saveHealthRecord(resource: Resource, data: Record<string, 
     action: 'create',
     resource,
     data,
+  })
+}
+
+export async function editHealthRecord(resource: Resource, row: number, data: Record<string, string>) {
+  return request<{ sheet: string; row: number }>({
+    action: 'update',
+    resource,
+    row,
+    data,
+  })
+}
+
+export async function deleteHealthRecord(resource: Resource, row: number) {
+  return request<{ sheet: string; row: number }>({
+    action: 'delete',
+    resource,
+    row,
   })
 }
 

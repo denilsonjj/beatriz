@@ -40,38 +40,57 @@ button:disabled {
   cursor: not-allowed;
 }
 
-/* Acessibilidade: Letra Grande para Dona Beatriz */
+/* Acessibilidade: escala previsível, sem aumento acumulado em elementos aninhados. */
 .font-large {
-  font-size: 1.15rem !important;
+  font-size: 1.125rem;
+  line-height: 1.6;
 }
 
-.font-large p,
-.font-large span,
-.font-large li,
-.font-large label,
-.font-large input,
-.font-large textarea,
-.font-large select,
-.font-large button,
-.font-large a,
-.font-large div {
-  font-size: 1.12em !important;
-}
-
-.font-large h1 {
-  font-size: 1.12em !important;
-}
-
-.font-large h2 {
-  font-size: 1.12em !important;
-}
-
-.font-large h3 {
-  font-size: 1.12em !important;
-}
-
-/* Evitar que textos secundários quebrem o layout */
 .font-large .text-xs,
-.font-large .text-sm {
-  font-size: 1.05em !important;
+.font-large .text-sm,
+.font-large .text-base {
+  font-size: 1.125rem !important;
+}
+
+.font-large .text-lg {
+  font-size: 1.25rem !important;
+}
+
+.font-large .text-xl {
+  font-size: 1.4rem !important;
+}
+
+.font-large .text-2xl {
+  font-size: 1.65rem !important;
+}
+
+.font-large .text-3xl {
+  font-size: 2rem !important;
+}
+
+.font-large .text-4xl {
+  font-size: 2.4rem !important;
+}
+
+.font-large :where(p, li, dt, dd, span, label, button, a) {
+  overflow-wrap: anywhere;
+}
+
+.font-large button {
+  line-height: 1.4;
+  white-space: normal;
+}
+
+.font-large .large-font-details {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+
+.font-large .large-font-summary {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+}
+
+@media (max-width: 640px) {
+  .font-large .large-font-summary {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
 }

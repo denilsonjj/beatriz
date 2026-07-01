@@ -545,7 +545,8 @@ export default function App() {
           <span className="text-base font-bold text-teal-900">Configuração de leitura:</span>
           <button
             type="button"
-            onClick={() => setIsLargeFont(!isLargeFont)}
+            onClick={() => setIsLargeFont((current) => !current)}
+            aria-pressed={isLargeFont}
             className="flex items-center gap-2 rounded-2xl bg-white border-2 border-teal-600 px-5 py-3 text-base font-extrabold text-teal-950 hover:bg-teal-100 active:scale-95 transition shadow-md"
           >
             {isLargeFont ? '🔍 Usar Letra Normal' : '🔍 Usar Letra Grande (Recomendado)'}
@@ -605,7 +606,7 @@ export default function App() {
             </button>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="large-font-summary grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <article className="rounded-2xl bg-white p-5 shadow-soft border-2 border-slate-100">
               <p className="text-base font-bold text-slate-600 flex items-center gap-1.5">📅 Próxima consulta</p>
               <p className="mt-3 text-xl font-extrabold leading-snug text-teal-900">
@@ -632,7 +633,7 @@ export default function App() {
             </article>
           </div>
 
-          <div className="mt-6 grid gap-4 lg:grid-cols-2">
+          <div className="large-font-details mt-6 grid gap-4 lg:grid-cols-2">
             <article className="rounded-3xl bg-white p-5 shadow-soft border-2 border-slate-100">
               <div className="flex items-center justify-between gap-3">
                 <div>
@@ -721,15 +722,15 @@ export default function App() {
                   Para atualizar, escolha um novo status no próprio exame.
                 </p>
                 {summary.records.exams.length > 0 ? (
-                  <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                  <div className="large-font-details mt-4 grid gap-4 lg:grid-cols-2">
                     {summary.records.exams.map((exam) => (
                       <div key={exam.row} className="rounded-2xl border-2 border-slate-200 bg-slate-50 p-4">
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div>
-                            <p className="text-lg font-extrabold text-slate-900">{exam.examName}</p>
+                        <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
+                          <div className="min-w-0 flex-1">
+                            <p className="break-words text-lg font-extrabold text-slate-900">{exam.examName}</p>
                             <p className="mt-1 font-semibold text-slate-600">Data: {exam.date || 'Não informada'}</p>
                           </div>
-                          <span className="rounded-full bg-teal-100 px-3 py-1 text-sm font-extrabold text-teal-900">
+                          <span className="shrink-0 rounded-full bg-teal-100 px-3 py-1 text-sm font-extrabold text-teal-900">
                             {exam.status}
                           </span>
                         </div>
@@ -762,7 +763,7 @@ export default function App() {
                 )}
               </article>
 
-              <div className="grid gap-5 lg:grid-cols-2">
+              <div className="large-font-details grid gap-5 lg:grid-cols-2">
                 <article className="rounded-3xl border-2 border-slate-100 bg-white p-5 shadow-soft">
                   <h3 className="text-xl font-extrabold text-teal-950">🩺 Consultas</h3>
                   {summary.records.consultations.length > 0 ? (

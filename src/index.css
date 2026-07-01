@@ -39,3 +39,39 @@ button {
 button:disabled {
   cursor: not-allowed;
 }
+
+/* Acessibilidade: Letra Grande para Dona Beatriz */
+.font-large {
+  font-size: 1.15rem !important;
+}
+
+.font-large p,
+.font-large span,
+.font-large li,
+.font-large label,
+.font-large input,
+.font-large textarea,
+.font-large select,
+.font-large button,
+.font-large a,
+.font-large div {
+  font-size: 1.12em !important;
+}
+
+.font-large h1 {
+  font-size: 1.12em !important;
+}
+
+.font-large h2 {
+  font-size: 1.12em !important;
+}
+
+.font-large h3 {
+  font-size: 1.12em !important;
+}
+
+/* Evitar que textos secundários quebrem o layout */
+.font-large .text-xs,
+.font-large .text-sm {
+  font-size: 1.05em !important;
+}

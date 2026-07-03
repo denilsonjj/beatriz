@@ -1,10 +1,11 @@
-export type Resource = 'consultations' | 'exams' | 'medications' | 'weights' | 'symptoms'
+export type Resource = 'consultations' | 'exams' | 'medications' | 'weights' | 'symptoms' | 'bloodPressures'
 
 export type ExamStatus = 'Pendente' | 'Realizado' | 'Avaliado'
 
 export type ConsultationRecord = {
   row: number
   date: string
+  time: string
   doctor: string
   specialty: string
   location: string
@@ -50,12 +51,23 @@ export type SymptomRecord = {
   createdAt: string
 }
 
+export type BloodPressureRecord = {
+  row: number
+  date: string
+  systolic: string
+  diastolic: string
+  pulse: string
+  notes: string
+  createdAt: string
+}
+
 export type HealthRecords = {
   consultations: ConsultationRecord[]
   exams: ExamRecord[]
   medications: MedicationRecord[]
   weights: WeightRecord[]
   symptoms: SymptomRecord[]
+  bloodPressures: BloodPressureRecord[]
 }
 
 export type DashboardSummary = {
@@ -64,6 +76,7 @@ export type DashboardSummary = {
   activeMedications: number
   activeMedicationsList: string[]
   lastWeight: string
+  lastBloodPressure: string
   pendingExams: number
   pendingExamsList: string[]
   records: HealthRecords

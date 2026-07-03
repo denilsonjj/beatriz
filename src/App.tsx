@@ -41,7 +41,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 
-type FormKey = 'consultation' | 'exam' | 'medication' | 'weight' | 'symptom'
+type FormKey = 'consultation' | 'exam' | 'medication' | 'weight' | 'symptom' | 'bloodPressure'
 
 type FormConfig = {
   key: FormKey
@@ -64,6 +64,7 @@ const emptySummary: DashboardSummary = {
   activeMedications: 0,
   activeMedicationsList: [],
   lastWeight: 'Sem registro',
+  lastBloodPressure: 'Sem registro',
   pendingExams: 0,
   pendingExamsList: [],
   records: {
@@ -72,6 +73,7 @@ const emptySummary: DashboardSummary = {
     medications: [],
     weights: [],
     symptoms: [],
+    bloodPressures: [],
   },
 }
 
@@ -105,6 +107,12 @@ const formConfigs: FormConfig[] = [
     title: '🤒 Registrar sintoma',
     resource: 'symptoms',
     description: 'Anote sintomas importantes para conversar com o médico.',
+  },
+  {
+    key: 'bloodPressure',
+    title: '❤️ Registrar pressão arterial',
+    resource: 'bloodPressures',
+    description: 'Registre a pressão máxima, a mínima e o pulso, se desejar.',
   },
 ]
 
@@ -156,7 +164,7 @@ function getInitialFormData(form: FormKey): Record<string, string> {
 
   switch (form) {
     case 'consultation':
-      return { date: today, doctor: '', specialty: '', location: '', notes: '' }
+      return { date: today, time: '', doctor: '', specialty: '', location: '', notes: '' }
     case 'exam':
       return { date: today, examName: '', resultSummary: '', status: 'Pendente', notes: '' }
     case 'medication':
@@ -165,6 +173,8 @@ function getInitialFormData(form: FormKey): Record<string, string> {
       return { date: today, weight: '', notes: '' }
     case 'symptom':
       return { date: today, description: '', intensity: 'Leve', notes: '' }
+    case 'bloodPressure':
+      return { date: today, systolic: '', diastolic: '', pulse: '', notes: '' }
   }
 }
 
@@ -172,6 +182,7 @@ function getClientValidationError(form: FormKey, data: Record<string, string>) {
   const requiredFields: Record<FormKey, Array<[string, string]>> = {
     consultation: [
       ['date', 'Informe a data da consulta.'],
+      ['time', 'Informe o horário da consulta.'],
       ['doctor', 'Informe o nome do médico.'],
       ['specialty', 'Informe a especialidade.'],
     ],
@@ -195,6 +206,11 @@ function getClientValidationError(form: FormKey, data: Record<string, string>) {
       ['description', 'Descreva o sintoma.'],
       ['intensity', 'Selecione a intensidade.'],
     ],
+    bloodPressure: [
+      ['date', 'Informe a data da aferição.'],
+      ['systolic', 'Informe a pressão máxima.'],
+      ['diastolic', 'Informe a pressão mínima.'],
+    ],
   }
 
   for (const [field, message] of requiredFields[form]) {
@@ -209,6 +225,16 @@ function getClientValidationError(form: FormKey, data: Record<string, string>) {
     if (!Number.isFinite(weight) || weight <= 0) {
       return 'Informe um peso válido maior que zero.'
     }
+  }
+
+  if (form === 'bloodPressure') {
+    const systolic = Number(data.systolic)
+    const diastolic = Number(data.diastolic)
+    const pulse = data.pulse ? Number(data.pulse) : null
+    if (!Number.isFinite(systolic) || systolic < 50 || systolic > 300) return 'Informe a pressão máxima em mmHg, entre 50 e 300.'
+    if (!Number.isFinite(diastolic) || diastolic < 30 || diastolic > 200) return 'Informe a pressão mínima em mmHg, entre 30 e 200.'
+    if (systolic <= diastolic) return 'A pressão máxima deve ser maior que a pressão mínima.'
+    if (pulse !== null && (!Number.isFinite(pulse) || pulse < 20 || pulse > 250)) return 'Informe o pulso entre 20 e 250 batimentos por minuto.'
   }
 
   if (form === 'medication' && data.endDate && data.endDate < data.startDate) {
@@ -286,6 +312,10 @@ export default function App() {
       setSummary({
         ...emptySummary,
         ...data,
+        records: {
+          ...emptySummary.records,
+          ...(data.records ?? {}),
+        },
       })
 
       if (showSuccess) {
@@ -563,6 +593,7 @@ export default function App() {
       return (
         <>
           {field('Data', 'date', 'date', true)}
+          {field('Horário', 'time', 'time', true)}
           {field('Médico', 'doctor', 'text', true)}
           {fieldWithChips('Especialidade', 'specialty', ['Clínico Geral', 'Geriatra', 'Cardiologista', 'Oftalmologista', 'Ortopedista', 'Dentista'], true)}
           {field('Local', 'location')}
@@ -636,11 +667,25 @@ export default function App() {
       )
     }
 
-    return (
+    if (activeForm === 'symptom') return (
       <>
         {field('Data', 'date', 'date', true)}
         {textareaWithChips('Descrição do sintoma', 'description', ['Dor de cabeça', 'Tontura', 'Enjoo', 'Dor nas costas', 'Pressão alta', 'Cansaço'], true)}
         {select('Intensidade', 'intensity', ['Leve', 'Moderada', 'Forte'])}
+        {textarea('Observações', 'notes')}
+      </>
+    )
+
+    return (
+      <>
+        {field('Data da aferição', 'date', 'date', true)}
+        <Card className="border-teal-100 bg-teal-50/70 p-4 shadow-none">
+          <p className="font-extrabold text-teal-950">Como preencher</p>
+          <p className="mt-1 text-sm font-semibold leading-relaxed text-teal-900">Digite os números mostrados no aparelho. Exemplo: para 120 por 80, informe 120 na máxima e 80 na mínima.</p>
+        </Card>
+        {field('Pressão máxima (mmHg)', 'systolic', 'number', true)}
+        {field('Pressão mínima (mmHg)', 'diastolic', 'number', true)}
+        {field('Pulso (batimentos por minuto)', 'pulse', 'number')}
         {textarea('Observações', 'notes')}
       </>
     )
@@ -687,7 +732,7 @@ export default function App() {
             </div>
           </div>
           <p className="mt-5 max-w-2xl text-lg leading-relaxed text-teal-50">
-            Registre consultas, exames, medicamentos, peso e sintomas de forma simples.
+          Registre consultas, exames, medicamentos, peso, pressão e sintomas de forma simples.
           </p>
         </header>
 
@@ -737,7 +782,7 @@ export default function App() {
             </Button>
           </div>
 
-          <div className="large-font-summary grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="large-font-summary grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
             <Card className="rounded-xl border-slate-200/70 bg-white p-5 shadow-sm">
               <p className="text-base font-bold text-slate-600 flex items-center gap-1.5">📅 Próxima consulta</p>
               <p className="mt-3 text-xl font-extrabold leading-snug text-teal-900">
@@ -760,6 +805,12 @@ export default function App() {
               <p className="text-base font-bold text-slate-600 flex items-center gap-1.5">📄 Exames pendentes</p>
               <p className="mt-3 text-3xl font-extrabold text-teal-900">
                 {isDashboardLoading ? '—' : summary.pendingExams}
+              </p>
+            </Card>
+            <Card className="rounded-xl border-rose-100 bg-rose-50/50 p-5 shadow-sm">
+              <p className="text-base font-bold text-slate-600 flex items-center gap-1.5">❤️ Última pressão</p>
+              <p className="mt-3 text-2xl font-extrabold text-rose-800">
+                {isDashboardLoading ? '—' : summary.lastBloodPressure}
               </p>
             </Card>
           </div>
@@ -916,11 +967,11 @@ export default function App() {
                       {summary.records.consultations.map((item) => (
                         <li key={item.row} className="rounded-lg border border-slate-200 bg-slate-50/70 p-4 text-slate-700">
                           <p className="text-lg font-extrabold text-slate-900">{item.doctor}</p>
-                          <p className="font-bold">{item.date} · {item.specialty}</p>
+                          <p className="font-bold">{item.date}{item.time ? ` às ${item.time}` : ''} · {item.specialty}</p>
                           <p className="mt-2"><span className="font-extrabold">Local:</span> {item.location || 'Não informado'}</p>
                           <p><span className="font-extrabold">Observações:</span> {item.notes || 'Nenhuma'}</p>
                           {recordActions('consultation', 'consultations', item.row, item.doctor, {
-                            date: item.date, doctor: item.doctor, specialty: item.specialty,
+                            date: item.date, time: item.time ?? '', doctor: item.doctor, specialty: item.specialty,
                             location: item.location, notes: item.notes,
                           })}
                         </li>
@@ -983,6 +1034,25 @@ export default function App() {
                       ))}
                     </ul>
                   ) : <p className="mt-4 font-semibold text-slate-500">Nenhum sintoma registrado ainda.</p>}
+                </Card>
+
+                <Card className="rounded-xl border-rose-100 bg-white p-5 shadow-sm">
+                  <h3 className="text-xl font-extrabold text-rose-900">❤️ Pressão arterial</h3>
+                  {summary.records.bloodPressures.length > 0 ? (
+                    <ul className="mt-4 space-y-3">
+                      {summary.records.bloodPressures.map((item) => (
+                        <li key={item.row} className="rounded-lg border border-rose-100 bg-rose-50/40 p-4 text-slate-700">
+                          <p className="text-2xl font-extrabold text-rose-900">{item.systolic}/{item.diastolic} mmHg</p>
+                          <p className="font-bold">{item.date}{item.pulse ? ` · Pulso ${item.pulse} bpm` : ''}</p>
+                          <p className="mt-2"><span className="font-extrabold">Observações:</span> {item.notes || 'Nenhuma'}</p>
+                          {recordActions('bloodPressure', 'bloodPressures', item.row, `${item.systolic}/${item.diastolic} mmHg`, {
+                            date: item.date, systolic: item.systolic, diastolic: item.diastolic,
+                            pulse: item.pulse, notes: item.notes,
+                          })}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : <p className="mt-4 font-semibold text-slate-500">Nenhuma pressão registrada ainda.</p>}
                 </Card>
               </div>
             </div>

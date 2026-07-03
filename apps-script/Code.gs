@@ -11,9 +11,9 @@ const API_TOKEN = '2276bg7dshba'
 const RESOURCE_CONFIG = {
   consultations: {
     sheetName: 'Consultas',
-    headers: ['Data', 'Médico', 'Especialidade', 'Local', 'Observações', 'Criado em'],
-    fields: ['date', 'doctor', 'specialty', 'location', 'notes'],
-    required: ['date', 'doctor', 'specialty'],
+    headers: ['Data', 'Horário', 'Médico', 'Especialidade', 'Local', 'Observações', 'Criado em'],
+    fields: ['date', 'time', 'doctor', 'specialty', 'location', 'notes'],
+    required: ['date', 'time', 'doctor', 'specialty'],
   },
   exams: {
     sheetName: 'Exames',
@@ -38,6 +38,12 @@ const RESOURCE_CONFIG = {
     headers: ['Data', 'Descrição', 'Intensidade', 'Observações', 'Criado em'],
     fields: ['date', 'description', 'intensity', 'notes'],
     required: ['date', 'description', 'intensity'],
+  },
+  bloodPressures: {
+    sheetName: 'Pressão',
+    headers: ['Data', 'Pressão máxima', 'Pressão mínima', 'Pulso', 'Observações', 'Criado em'],
+    fields: ['date', 'systolic', 'diastolic', 'pulse', 'notes'],
+    required: ['date', 'systolic', 'diastolic'],
   },
 }
 
@@ -223,7 +229,18 @@ function getOrCreateSheet(spreadsheet, sheetName, headers) {
   }
 
   ensureHeaders(sheet, headers)
+  if (sheetName === RESOURCE_CONFIG.consultations.sheetName) {
+    ensureConsultationTimeColumn(sheet)
+  }
   return sheet
+}
+
+function ensureConsultationTimeColumn(sheet) {
+  const secondHeader = String(sheet.getRange(1, 2).getDisplayValue() || '').trim()
+  if (secondHeader === 'Horário') return
+
+  sheet.insertColumnAfter(1)
+  sheet.getRange(1, 2).setValue('Horário').setFontWeight('bold')
 }
 
 function ensureHeaders(sheet, headers) {
@@ -270,12 +287,32 @@ function validateRecord(resource, data, config) {
   if (resource === 'symptoms' && ['Leve', 'Moderada', 'Forte'].indexOf(String(data.intensity)) === -1) {
     throw new Error('Intensidade do sintoma inválida.')
   }
+
+  if (resource === 'bloodPressures') {
+    const systolic = Number(data.systolic)
+    const diastolic = Number(data.diastolic)
+    const pulse = data.pulse ? Number(data.pulse) : null
+
+    if (!isFinite(systolic) || systolic < 50 || systolic > 300) {
+      throw new Error('Informe a pressão máxima em mmHg, entre 50 e 300.')
+    }
+    if (!isFinite(diastolic) || diastolic < 30 || diastolic > 200) {
+      throw new Error('Informe a pressão mínima em mmHg, entre 30 e 200.')
+    }
+    if (systolic <= diastolic) {
+      throw new Error('A pressão máxima deve ser maior que a pressão mínima.')
+    }
+    if (pulse !== null && (!isFinite(pulse) || pulse < 20 || pulse > 250)) {
+      throw new Error('Informe o pulso em batimentos por minuto, entre 20 e 250.')
+    }
+  }
 }
 
 function getFieldLabel(field) {
   const labels = {
     date: 'Data',
     doctor: 'Médico',
+    time: 'Horário',
     specialty: 'Especialidade',
     examName: 'Nome do exame',
     status: 'Status',
@@ -286,6 +323,8 @@ function getFieldLabel(field) {
     weight: 'Peso em kg',
     description: 'Descrição do sintoma',
     intensity: 'Intensidade',
+    systolic: 'Pressão máxima',
+    diastolic: 'Pressão mínima',
   }
 
   return labels[field] || field
@@ -420,6 +459,7 @@ function getDashboardSummary(spreadsheet) {
   const medications = getRows(getOrCreateSheet(spreadsheet, RESOURCE_CONFIG.medications.sheetName, RESOURCE_CONFIG.medications.headers))
   const weights = getRows(getOrCreateSheet(spreadsheet, RESOURCE_CONFIG.weights.sheetName, RESOURCE_CONFIG.weights.headers))
   const exams = getRows(getOrCreateSheet(spreadsheet, RESOURCE_CONFIG.exams.sheetName, RESOURCE_CONFIG.exams.headers))
+  const bloodPressures = getRows(getOrCreateSheet(spreadsheet, RESOURCE_CONFIG.bloodPressures.sheetName, RESOURCE_CONFIG.bloodPressures.headers))
 
   const upcomingConsultations = consultations
     .filter(function (row) {
@@ -456,6 +496,15 @@ function getDashboardSummary(spreadsheet) {
     ? formatWeight(sortedWeights[0][1])
     : 'Sem registro'
 
+  const sortedBloodPressures = bloodPressures
+    .slice()
+    .reverse()
+    .filter(function (row) { return normalizeDate(row[0]) && row[1] !== '' && row[2] !== '' })
+    .sort(function (first, second) { return normalizeDate(second[0]).localeCompare(normalizeDate(first[0])) })
+  const lastBloodPressure = sortedBloodPressures.length
+    ? String(sortedBloodPressures[0][1]) + '/' + String(sortedBloodPressures[0][2]) + ' mmHg'
+    : 'Sem registro'
+
   const pendingExamRows = exams.filter(function (row) {
     return String(row[3] || '').trim() === 'Pendente'
   })
@@ -468,6 +517,7 @@ function getDashboardSummary(spreadsheet) {
     activeMedications: activeMedications,
     activeMedicationsList: activeMedicationsList,
     lastWeight: lastWeight,
+    lastBloodPressure: lastBloodPressure,
     pendingExams: pendingExams,
     pendingExamsList: pendingExamsList,
     records: {
@@ -478,6 +528,7 @@ function getDashboardSummary(spreadsheet) {
       symptoms: buildSymptomRecords(
         getRows(getOrCreateSheet(spreadsheet, RESOURCE_CONFIG.symptoms.sheetName, RESOURCE_CONFIG.symptoms.headers)),
       ),
+      bloodPressures: buildBloodPressureRecords(bloodPressures),
     },
   }
 }
@@ -493,11 +544,12 @@ function buildConsultationRecords(rows) {
     return {
       row: rowNumber,
       date: formatDateForDisplay(row[0]),
-      doctor: String(row[1] || '').trim(),
-      specialty: String(row[2] || '').trim(),
-      location: String(row[3] || '').trim(),
-      notes: String(row[4] || '').trim(),
-      createdAt: String(row[5] || '').trim(),
+      time: String(row[1] || '').trim(),
+      doctor: String(row[2] || '').trim(),
+      specialty: String(row[3] || '').trim(),
+      location: String(row[4] || '').trim(),
+      notes: String(row[5] || '').trim(),
+      createdAt: String(row[6] || '').trim(),
     }
   })
 }
@@ -556,6 +608,20 @@ function buildSymptomRecords(rows) {
   })
 }
 
+function buildBloodPressureRecords(rows) {
+  return newestFirst(rows, function (row, rowNumber) {
+    return {
+      row: rowNumber,
+      date: formatDateForDisplay(row[0]),
+      systolic: String(row[1] || '').trim(),
+      diastolic: String(row[2] || '').trim(),
+      pulse: String(row[3] || '').trim(),
+      notes: String(row[4] || '').trim(),
+      createdAt: String(row[5] || '').trim(),
+    }
+  })
+}
+
 function formatMedication(row) {
   const name = String(row[0] || '').trim()
   const dosage = String(row[1] || '').trim()
@@ -586,11 +652,13 @@ function getRows(sheet) {
 
 function formatConsultation(row) {
   const date = formatDateForDisplay(row[0])
-  const doctor = String(row[1] || '').trim()
-  const specialty = String(row[2] || '').trim()
+  const time = String(row[1] || '').trim()
+  const doctor = String(row[2] || '').trim()
+  const specialty = String(row[3] || '').trim()
   const details = [doctor, specialty].filter(Boolean).join(' · ')
+  const dateAndTime = [date, time].filter(Boolean).join(' às ')
 
-  return details ? date + ' — ' + details : date
+  return details ? dateAndTime + ' — ' + details : dateAndTime
 }
 
 function formatWeight(value) {

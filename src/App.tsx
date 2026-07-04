@@ -167,6 +167,25 @@ function sortByClosestDate<T extends { date: string }>(records: T[]) {
   })
 }
 
+function sortConsultationsByDate<T extends { date: string }>(records: T[]) {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+
+  return [...records].sort((first, second) => {
+    const firstDate = parseBrazilianDate(first.date)
+    const secondDate = parseBrazilianDate(second.date)
+    if (!firstDate) return secondDate ? 1 : 0
+    if (!secondDate) return -1
+
+    const firstIsFuture = firstDate.getTime() >= today.getTime()
+    const secondIsFuture = secondDate.getTime() >= today.getTime()
+    if (firstIsFuture !== secondIsFuture) return firstIsFuture ? -1 : 1
+    return firstIsFuture
+      ? firstDate.getTime() - secondDate.getTime()
+      : secondDate.getTime() - firstDate.getTime()
+  })
+}
+
 function sortMedicationsAlphabetically<T extends { name: string }>(records: T[]) {
   return [...records].sort((first, second) =>
     first.name.localeCompare(second.name, 'pt-BR', { sensitivity: 'base' }),
@@ -1000,7 +1019,7 @@ export default function App() {
                   <h3 className="text-xl font-extrabold text-teal-950">🩺 Consultas</h3>
                   {summary.records.consultations.length > 0 ? (
                     <ul className="mt-4 space-y-3">
-                      {sortByClosestDate(summary.records.consultations).map((item) => (
+                      {sortConsultationsByDate(summary.records.consultations).map((item) => (
                         <li key={item.row} className="rounded-lg border border-slate-200 bg-slate-50/70 p-4 text-slate-700">
                           <p className="text-lg font-extrabold text-slate-900">{item.doctor}</p>
                           <p className="font-bold">{item.date}{item.time ? ` às ${item.time}` : ''} · {item.specialty}</p>

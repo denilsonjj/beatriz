@@ -143,6 +143,36 @@ function formatDateWhileTyping(value: string) {
   return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`
 }
 
+function parseBrazilianDate(value: string) {
+  const isoDate = brazilianToIso(value)
+  if (!isoDate) return null
+  const [year, month, day] = isoDate.split('-').map(Number)
+  return new Date(year, month - 1, day)
+}
+
+function sortByClosestDate<T extends { date: string }>(records: T[]) {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+
+  return [...records].sort((first, second) => {
+    const firstDate = parseBrazilianDate(first.date)
+    const secondDate = parseBrazilianDate(second.date)
+    if (!firstDate) return secondDate ? 1 : 0
+    if (!secondDate) return -1
+
+    const firstDistance = Math.abs(firstDate.getTime() - today.getTime())
+    const secondDistance = Math.abs(secondDate.getTime() - today.getTime())
+    if (firstDistance !== secondDistance) return firstDistance - secondDistance
+    return firstDate.getTime() - secondDate.getTime()
+  })
+}
+
+function sortMedicationsAlphabetically<T extends { name: string }>(records: T[]) {
+  return [...records].sort((first, second) =>
+    first.name.localeCompare(second.name, 'pt-BR', { sensitivity: 'base' }),
+  )
+}
+
 function normalizeDatesForApi(data: Record<string, string>) {
   const normalized = { ...data }
   for (const field of ['date', 'startDate', 'endDate']) {
@@ -909,7 +939,7 @@ export default function App() {
                 </p>
                 {summary.records.exams.length > 0 ? (
                   <div className="large-font-details mt-4 grid gap-4 lg:grid-cols-2">
-                    {summary.records.exams.map((exam) => (
+                    {sortByClosestDate(summary.records.exams).map((exam) => (
                       <div key={exam.row} className="rounded-lg border border-slate-200 bg-slate-50/70 p-4">
                         <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
                           <div className="min-w-0 flex-1">
@@ -964,7 +994,7 @@ export default function App() {
                   <h3 className="text-xl font-extrabold text-teal-950">🩺 Consultas</h3>
                   {summary.records.consultations.length > 0 ? (
                     <ul className="mt-4 space-y-3">
-                      {summary.records.consultations.map((item) => (
+                      {sortByClosestDate(summary.records.consultations).map((item) => (
                         <li key={item.row} className="rounded-lg border border-slate-200 bg-slate-50/70 p-4 text-slate-700">
                           <p className="text-lg font-extrabold text-slate-900">{item.doctor}</p>
                           <p className="font-bold">{item.date}{item.time ? ` às ${item.time}` : ''} · {item.specialty}</p>
@@ -984,7 +1014,7 @@ export default function App() {
                   <h3 className="text-xl font-extrabold text-teal-950">💊 Medicamentos</h3>
                   {summary.records.medications.length > 0 ? (
                     <ul className="mt-4 space-y-3">
-                      {summary.records.medications.map((item) => (
+                      {sortMedicationsAlphabetically(summary.records.medications).map((item) => (
                         <li key={item.row} className="rounded-lg border border-slate-200 bg-slate-50/70 p-4 text-slate-700">
                           <p className="text-lg font-extrabold text-slate-900">{item.name}</p>
                           <p className="font-bold">{item.dosage} · {item.schedule}</p>
@@ -1004,7 +1034,7 @@ export default function App() {
                   <h3 className="text-xl font-extrabold text-teal-950">⚖️ Histórico de peso</h3>
                   {summary.records.weights.length > 0 ? (
                     <ul className="mt-4 space-y-3">
-                      {summary.records.weights.map((item) => (
+                      {sortByClosestDate(summary.records.weights).map((item) => (
                         <li key={item.row} className="rounded-lg border border-slate-200 bg-slate-50/70 p-4 text-slate-700">
                           <p className="text-lg font-extrabold text-slate-900">{item.weight}</p>
                           <p className="font-bold">{item.date}</p>
@@ -1022,7 +1052,7 @@ export default function App() {
                   <h3 className="text-xl font-extrabold text-teal-950">🤒 Sintomas</h3>
                   {summary.records.symptoms.length > 0 ? (
                     <ul className="mt-4 space-y-3">
-                      {summary.records.symptoms.map((item) => (
+                      {sortByClosestDate(summary.records.symptoms).map((item) => (
                         <li key={item.row} className="rounded-lg border border-slate-200 bg-slate-50/70 p-4 text-slate-700">
                           <p className="text-lg font-extrabold text-slate-900">{item.description}</p>
                           <p className="font-bold">{item.date} · Intensidade {item.intensity}</p>
@@ -1040,7 +1070,7 @@ export default function App() {
                   <h3 className="text-xl font-extrabold text-rose-900">❤️ Pressão arterial</h3>
                   {summary.records.bloodPressures.length > 0 ? (
                     <ul className="mt-4 space-y-3">
-                      {summary.records.bloodPressures.map((item) => (
+                      {sortByClosestDate(summary.records.bloodPressures).map((item) => (
                         <li key={item.row} className="rounded-lg border border-rose-100 bg-rose-50/40 p-4 text-slate-700">
                           <p className="text-2xl font-extrabold text-rose-900">{item.systolic}/{item.diastolic} mmHg</p>
                           <p className="font-bold">{item.date}{item.pulse ? ` · Pulso ${item.pulse} bpm` : ''}</p>

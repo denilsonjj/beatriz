@@ -173,6 +173,12 @@ function sortMedicationsAlphabetically<T extends { name: string }>(records: T[])
   )
 }
 
+function sortMedicationSummariesAlphabetically(items: string[]) {
+  return [...items].sort((first, second) =>
+    first.localeCompare(second, 'pt-BR', { sensitivity: 'base' }),
+  )
+}
+
 function normalizeDatesForApi(data: Record<string, string>) {
   const normalized = { ...data }
   for (const field of ['date', 'startDate', 'endDate']) {
@@ -887,7 +893,7 @@ export default function App() {
               </div>
               {!isDashboardLoading && summary.activeMedicationsList.length > 0 ? (
                 <ul className="mt-5 space-y-3 text-slate-700">
-                  {summary.activeMedicationsList.map((item, index) => (
+                  {sortMedicationSummariesAlphabetically(summary.activeMedicationsList).map((item, index) => (
                     <li key={index} className="rounded-lg border border-slate-200 bg-slate-50/70 px-4 py-3 font-semibold">
                       {item}
                     </li>

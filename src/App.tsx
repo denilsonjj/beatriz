@@ -873,7 +873,7 @@ export default function App() {
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-base font-extrabold text-slate-700 flex items-center gap-1.5">📅 Próximas consultas (Agenda)</p>
-                <p className="mt-2 text-sm text-slate-500">As três consultas futuras mais próximas que estão agendadas.</p>
+                <p className="mt-2 text-sm text-slate-500">Todas as consultas futuras, organizadas da mais próxima para a mais distante.</p>
               </div>
             </div>
             {!isDashboardLoading && summary.upcomingConsultations.length > 0 ? (

@@ -469,7 +469,7 @@ function getDashboardSummary(spreadsheet) {
       return normalizeDate(first[0]).localeCompare(normalizeDate(second[0]))
     })
 
-  const upcomingConsultationsList = upcomingConsultations.slice(0, 3).map(formatConsultation)
+  const upcomingConsultationsList = upcomingConsultations.map(formatConsultation)
   const nextConsultation = upcomingConsultationsList.length
     ? upcomingConsultationsList[0]
     : 'Nenhuma agendada'

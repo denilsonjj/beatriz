@@ -10,6 +10,15 @@ export type ConsultationRecord = {
   specialty: string
   location: string
   notes: string
+  questions: string
+  relatedSymptoms: string
+  relatedExams: string
+  pendingItems: string
+  doctorSummary: string
+  diagnosis: string
+  requestedExams: string
+  treatmentChanges: string
+  nextReturn: string
   createdAt: string
 }
 

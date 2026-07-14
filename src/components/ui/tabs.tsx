@@ -8,7 +8,7 @@ export const TabsList = forwardRef<ElementRef<typeof TabsPrimitive.List>, Compon
   ({ className, ...props }, ref) => (
     <TabsPrimitive.List
       ref={ref}
-      className={cn('grid w-full grid-cols-3 gap-2 rounded-2xl border border-border bg-muted p-2', className)}
+      className={cn('grid w-full grid-cols-4 gap-2 rounded-2xl border border-border bg-muted p-2', className)}
       {...props}
     />
   ),

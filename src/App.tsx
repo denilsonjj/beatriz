@@ -58,6 +58,15 @@ type Notice = {
 type EditTarget = { resource: Resource; row: number } | null
 type DeleteTarget = { resource: Resource; row: number; label: string } | null
 
+type TimelineItem = {
+  id: string
+  date: string
+  title: string
+  detail: string
+  icon: string
+  tone: string
+}
+
 const emptySummary: DashboardSummary = {
   nextConsultation: 'Nenhuma agendada',
   upcomingConsultations: [],
@@ -82,7 +91,7 @@ const formConfigs: FormConfig[] = [
     key: 'consultation',
     title: '🩺 Registrar consulta',
     resource: 'consultations',
-    description: 'Guarde a data e os detalhes da próxima ou última consulta.',
+    description: 'Guarde o que preparar antes e o que aconteceu depois da consulta.',
   },
   {
     key: 'exam',
@@ -198,9 +207,70 @@ function sortMedicationSummariesAlphabetically(items: string[]) {
   )
 }
 
+function buildHealthTimeline(summary: DashboardSummary): TimelineItem[] {
+  const items: TimelineItem[] = [
+    ...summary.records.consultations.map((item) => ({
+      id: `consultation-${item.row}`,
+      date: item.date,
+      title: `${item.doctor || 'Consulta'}${item.specialty ? ` · ${item.specialty}` : ''}`,
+      detail: [item.time ? `Horário ${item.time}` : '', item.diagnosis || item.doctorSummary || item.notes].filter(Boolean).join(' — ') || 'Consulta registrada',
+      icon: '🩺',
+      tone: 'border-teal-200 bg-teal-50/70 text-teal-950',
+    })),
+    ...summary.records.exams.map((item) => ({
+      id: `exam-${item.row}`,
+      date: item.date,
+      title: item.examName,
+      detail: [item.status, item.resultSummary].filter(Boolean).join(' — ') || 'Exame registrado',
+      icon: '🔬',
+      tone: 'border-sky-200 bg-sky-50/70 text-sky-950',
+    })),
+    ...summary.records.medications.map((item) => ({
+      id: `medication-${item.row}`,
+      date: item.startDate,
+      title: item.name,
+      detail: [item.dosage, item.schedule].filter(Boolean).join(' · ') || 'Medicamento registrado',
+      icon: '💊',
+      tone: 'border-violet-200 bg-violet-50/70 text-violet-950',
+    })),
+    ...summary.records.weights.map((item) => ({
+      id: `weight-${item.row}`,
+      date: item.date,
+      title: `Peso: ${item.weight}`,
+      detail: item.notes || 'Registro de peso',
+      icon: '⚖️',
+      tone: 'border-amber-200 bg-amber-50/70 text-amber-950',
+    })),
+    ...summary.records.symptoms.map((item) => ({
+      id: `symptom-${item.row}`,
+      date: item.date,
+      title: item.description,
+      detail: `Sintoma ${item.intensity.toLowerCase()}${item.notes ? ` — ${item.notes}` : ''}`,
+      icon: '🤒',
+      tone: 'border-orange-200 bg-orange-50/70 text-orange-950',
+    })),
+    ...summary.records.bloodPressures.map((item) => ({
+      id: `pressure-${item.row}`,
+      date: item.date,
+      title: `Pressão: ${item.systolic}/${item.diastolic} mmHg`,
+      detail: item.pulse ? `Pulso ${item.pulse} bpm${item.notes ? ` — ${item.notes}` : ''}` : item.notes || 'Pressão arterial registrada',
+      icon: '❤️',
+      tone: 'border-rose-200 bg-rose-50/70 text-rose-950',
+    })),
+  ]
+
+  return items.sort((first, second) => {
+    const firstDate = parseBrazilianDate(first.date)
+    const secondDate = parseBrazilianDate(second.date)
+    if (!firstDate) return secondDate ? 1 : 0
+    if (!secondDate) return -1
+    return secondDate.getTime() - firstDate.getTime()
+  })
+}
+
 function normalizeDatesForApi(data: Record<string, string>) {
   const normalized = { ...data }
-  for (const field of ['date', 'startDate', 'endDate']) {
+  for (const field of ['date', 'startDate', 'endDate', 'nextReturn']) {
     if (normalized[field]) normalized[field] = brazilianToIso(normalized[field]) ?? normalized[field]
   }
   return normalized
@@ -219,7 +289,11 @@ function getInitialFormData(form: FormKey): Record<string, string> {
 
   switch (form) {
     case 'consultation':
-      return { date: today, time: '', doctor: '', specialty: '', location: '', notes: '' }
+      return {
+        date: today, time: '', doctor: '', specialty: '', location: '', notes: '',
+        questions: '', relatedSymptoms: '', relatedExams: '', pendingItems: '', doctorSummary: '',
+        diagnosis: '', requestedExams: '', treatmentChanges: '', nextReturn: '',
+      }
     case 'exam':
       return { date: today, examName: '', resultSummary: '', status: 'Pendente', notes: '' }
     case 'medication':
@@ -298,7 +372,7 @@ function getClientValidationError(form: FormKey, data: Record<string, string>) {
     if (startDate && endDate && endDate < startDate) return 'A data de término não pode ser anterior à data de início.'
   }
 
-  for (const field of ['date', 'startDate', 'endDate']) {
+  for (const field of ['date', 'startDate', 'endDate', 'nextReturn']) {
     if (data[field] && !brazilianToIso(data[field])) return 'Informe a data no formato DD/MM/AAAA.'
   }
 
@@ -358,6 +432,8 @@ export default function App() {
     () => formConfigs.find((form) => form.key === activeForm) ?? null,
     [activeForm],
   )
+
+  const timelineItems = useMemo(() => buildHealthTimeline(summary), [summary])
 
   async function refreshDashboard(showSuccess = false) {
     setIsDashboardLoading(true)
@@ -630,6 +706,13 @@ export default function App() {
       </div>
     )
 
+    const formSection = (title: string, description: string) => (
+      <div className="rounded-xl border border-teal-100 bg-teal-50/70 px-4 py-3">
+        <p className="text-lg font-extrabold text-teal-950">{title}</p>
+        <p className="mt-1 text-sm font-semibold leading-relaxed text-teal-800">{description}</p>
+      </div>
+    )
+
     const select = (label: string, name: string, options: string[]) => (
       <div className="block text-base font-bold text-slate-800">
         <Label htmlFor={name} className="text-base font-bold">{label} *</Label>
@@ -647,12 +730,26 @@ export default function App() {
     if (activeForm === 'consultation') {
       return (
         <>
+          {formSection('1. Dados da consulta', 'Preencha estes dados para localizar a consulta depois.')}
           {field('Data', 'date', 'date', true)}
           {field('Horário', 'time', 'time', true)}
           {field('Médico', 'doctor', 'text', true)}
           {fieldWithChips('Especialidade', 'specialty', ['Clínico Geral', 'Geriatra', 'Cardiologista', 'Oftalmologista', 'Ortopedista', 'Dentista'], true)}
           {field('Local', 'location')}
-          {textarea('Observações', 'notes')}
+          {textarea('Observações gerais', 'notes')}
+
+          {formSection('2. Antes da consulta', 'Anote o que deseja lembrar ou conversar com o médico. Tudo é opcional.')}
+          {textarea('Perguntas para a consulta', 'questions')}
+          {textareaWithChips('Sintomas relacionados', 'relatedSymptoms', summary.records.symptoms.map((item) => item.description).filter(Boolean).slice(0, 6))}
+          {textareaWithChips('Exames relacionados', 'relatedExams', summary.records.exams.map((item) => item.examName).filter(Boolean).slice(0, 6))}
+          {textarea('Pendências para resolver', 'pendingItems')}
+
+          {formSection('3. Depois da consulta', 'Quando voltar da consulta, edite este registro e complete somente o que fizer sentido.')}
+          {textarea('O que o médico informou', 'doctorSummary')}
+          {textarea('Diagnóstico ou hipótese', 'diagnosis')}
+          {textarea('Exames solicitados', 'requestedExams')}
+          {textarea('Medicamentos ou mudanças de tratamento', 'treatmentChanges')}
+          {field('Próximo retorno', 'nextReturn', 'date')}
         </>
       )
     }
@@ -797,6 +894,7 @@ export default function App() {
             <li>1. Use <span className="font-extrabold text-teal-700">Visão geral</span> para acompanhar a saúde.</li>
             <li>2. Use <span className="font-extrabold text-teal-700">Adicionar</span> para registrar uma informação nova.</li>
             <li>3. Use <span className="font-extrabold text-teal-700">Meus registros</span> para editar ou excluir informações.</li>
+            <li>4. Use <span className="font-extrabold text-teal-700">Evolução</span> para ver a história da saúde por data.</li>
           </ol>
         </Card>
 
@@ -818,6 +916,7 @@ export default function App() {
             <TabsTrigger value="overview">📊 Visão geral</TabsTrigger>
             <TabsTrigger value="add">➕ Adicionar</TabsTrigger>
             <TabsTrigger value="records">🗂️ Meus registros</TabsTrigger>
+            <TabsTrigger value="evolution">🗓️ Evolução</TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview">
@@ -947,6 +1046,33 @@ export default function App() {
         </section>
           </TabsContent>
 
+          <TabsContent value="evolution">
+            <section aria-labelledby="timeline-title">
+              <h2 id="timeline-title" className="text-2xl font-extrabold text-slate-900">🗓️ Evolução da saúde</h2>
+              <p className="mt-2 text-base font-semibold leading-relaxed text-slate-600">
+                Veja consultas, exames, medicamentos e registros de saúde em ordem da data mais recente para a mais antiga.
+              </p>
+              {timelineItems.length > 0 ? (
+                <ol className="mt-6 space-y-4 border-l-4 border-teal-100 pl-5 sm:pl-7">
+                  {timelineItems.map((item) => (
+                    <li key={item.id} className="relative">
+                      <span className="absolute -left-[2.35rem] top-5 flex h-9 w-9 items-center justify-center rounded-full border-4 border-slate-50 bg-white text-lg sm:-left-[3.05rem]" aria-hidden="true">{item.icon}</span>
+                      <Card className={`rounded-xl border p-5 shadow-sm ${item.tone}`}>
+                        <p className="text-sm font-extrabold uppercase tracking-wide opacity-80">{item.date || 'Data não informada'}</p>
+                        <h3 className="mt-1 text-lg font-extrabold">{item.title}</h3>
+                        <p className="mt-2 break-words font-semibold leading-relaxed">{item.detail}</p>
+                      </Card>
+                    </li>
+                  ))}
+                </ol>
+              ) : !isDashboardLoading ? (
+                <Card className="mt-6 rounded-xl border-slate-200 bg-white p-5 shadow-sm">
+                  <p className="font-semibold text-slate-600">Ainda não há registros para mostrar na evolução.</p>
+                </Card>
+              ) : null}
+            </section>
+          </TabsContent>
+
           <TabsContent value="records">
           <section className="mt-8" aria-labelledby="records-title">
             <h2 id="records-title" className="text-2xl font-extrabold text-slate-900">
@@ -1025,9 +1151,39 @@ export default function App() {
                           <p className="font-bold">{item.date}{item.time ? ` às ${item.time}` : ''} · {item.specialty}</p>
                           <p className="mt-2"><span className="font-extrabold">Local:</span> {item.location || 'Não informado'}</p>
                           <p><span className="font-extrabold">Observações:</span> {item.notes || 'Nenhuma'}</p>
+                          {(item.questions || item.relatedSymptoms || item.relatedExams || item.pendingItems || item.doctorSummary || item.diagnosis || item.requestedExams || item.treatmentChanges || item.nextReturn) && (
+                            <details className="mt-4 rounded-lg border border-teal-100 bg-white/80 p-4">
+                              <summary className="cursor-pointer text-base font-extrabold text-teal-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-300">📋 Ver acompanhamento desta consulta</summary>
+                              <dl className="mt-4 space-y-3 border-t border-teal-100 pt-4 text-base leading-relaxed">
+                                {(item.questions || item.relatedSymptoms || item.relatedExams || item.pendingItems) && (
+                                  <div className="space-y-3">
+                                    <p className="font-extrabold text-teal-950">Antes da consulta</p>
+                                    {item.questions && <div><dt className="font-extrabold">Perguntas</dt><dd className="break-words">{item.questions}</dd></div>}
+                                    {item.relatedSymptoms && <div><dt className="font-extrabold">Sintomas relacionados</dt><dd className="break-words">{item.relatedSymptoms}</dd></div>}
+                                    {item.relatedExams && <div><dt className="font-extrabold">Exames relacionados</dt><dd className="break-words">{item.relatedExams}</dd></div>}
+                                    {item.pendingItems && <div><dt className="font-extrabold">Pendências</dt><dd className="break-words">{item.pendingItems}</dd></div>}
+                                  </div>
+                                )}
+                                {(item.doctorSummary || item.diagnosis || item.requestedExams || item.treatmentChanges || item.nextReturn) && (
+                                  <div className="space-y-3 border-t border-teal-100 pt-4">
+                                    <p className="font-extrabold text-teal-950">Depois da consulta</p>
+                                    {item.doctorSummary && <div><dt className="font-extrabold">O que o médico informou</dt><dd className="break-words">{item.doctorSummary}</dd></div>}
+                                    {item.diagnosis && <div><dt className="font-extrabold">Diagnóstico ou hipótese</dt><dd className="break-words">{item.diagnosis}</dd></div>}
+                                    {item.requestedExams && <div><dt className="font-extrabold">Exames solicitados</dt><dd className="break-words">{item.requestedExams}</dd></div>}
+                                    {item.treatmentChanges && <div><dt className="font-extrabold">Mudanças de tratamento</dt><dd className="break-words">{item.treatmentChanges}</dd></div>}
+                                    {item.nextReturn && <div><dt className="font-extrabold">Próximo retorno</dt><dd>{item.nextReturn}</dd></div>}
+                                  </div>
+                                )}
+                              </dl>
+                            </details>
+                          )}
                           {recordActions('consultation', 'consultations', item.row, item.doctor, {
                             date: item.date, time: item.time ?? '', doctor: item.doctor, specialty: item.specialty,
-                            location: item.location, notes: item.notes,
+                            location: item.location, notes: item.notes, questions: item.questions,
+                            relatedSymptoms: item.relatedSymptoms, relatedExams: item.relatedExams,
+                            pendingItems: item.pendingItems, doctorSummary: item.doctorSummary,
+                            diagnosis: item.diagnosis, requestedExams: item.requestedExams,
+                            treatmentChanges: item.treatmentChanges, nextReturn: item.nextReturn,
                           })}
                         </li>
                       ))}

@@ -11,8 +11,17 @@ const API_TOKEN = '2276bg7dshba'
 const RESOURCE_CONFIG = {
   consultations: {
     sheetName: 'Consultas',
-    headers: ['Data', 'Horário', 'Médico', 'Especialidade', 'Local', 'Observações', 'Criado em'],
-    fields: ['date', 'time', 'doctor', 'specialty', 'location', 'notes'],
+    headers: [
+      'Data', 'Horário', 'Médico', 'Especialidade', 'Local', 'Observações',
+      'Perguntas para a consulta', 'Sintomas relacionados', 'Exames relacionados', 'Pendências',
+      'O que o médico informou', 'Diagnóstico ou hipótese', 'Exames solicitados',
+      'Medicamentos ou mudanças de tratamento', 'Próximo retorno', 'Criado em',
+    ],
+    fields: [
+      'date', 'time', 'doctor', 'specialty', 'location', 'notes',
+      'questions', 'relatedSymptoms', 'relatedExams', 'pendingItems', 'doctorSummary',
+      'diagnosis', 'requestedExams', 'treatmentChanges', 'nextReturn',
+    ],
     required: ['date', 'time', 'doctor', 'specialty'],
   },
   exams: {
@@ -230,17 +239,34 @@ function getOrCreateSheet(spreadsheet, sheetName, headers) {
 
   ensureHeaders(sheet, headers)
   if (sheetName === RESOURCE_CONFIG.consultations.sheetName) {
-    ensureConsultationTimeColumn(sheet)
+    ensureConsultationColumns(sheet)
   }
   return sheet
 }
 
-function ensureConsultationTimeColumn(sheet) {
-  const secondHeader = String(sheet.getRange(1, 2).getDisplayValue() || '').trim()
-  if (secondHeader === 'Horário') return
+function ensureConsultationColumns(sheet) {
+  const headers = RESOURCE_CONFIG.consultations.headers
+  const existingHeaders = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), 1)).getDisplayValues()[0]
 
-  sheet.insertColumnAfter(1)
-  sheet.getRange(1, 2).setValue('Horário').setFontWeight('bold')
+  // The first migration added the time column. Keep supporting sheets created before it.
+  if (existingHeaders.indexOf('Horário') === -1) {
+    sheet.insertColumnAfter(1)
+    sheet.getRange(1, 2).setValue('Horário').setFontWeight('bold')
+  }
+
+  headers.slice(0, -1).forEach(function (header) {
+    const currentHeaders = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), 1)).getDisplayValues()[0]
+    if (currentHeaders.indexOf(header) !== -1) return
+
+    const createdAtColumn = currentHeaders.indexOf('Criado em') + 1
+    if (createdAtColumn > 0) {
+      sheet.insertColumnBefore(createdAtColumn)
+      sheet.getRange(1, createdAtColumn).setValue(header).setFontWeight('bold')
+    } else {
+      const nextColumn = sheet.getLastColumn() + 1
+      sheet.getRange(1, nextColumn).setValue(header).setFontWeight('bold')
+    }
+  })
 }
 
 function ensureHeaders(sheet, headers) {
@@ -549,7 +575,16 @@ function buildConsultationRecords(rows) {
       specialty: String(row[3] || '').trim(),
       location: String(row[4] || '').trim(),
       notes: String(row[5] || '').trim(),
-      createdAt: String(row[6] || '').trim(),
+      questions: String(row[6] || '').trim(),
+      relatedSymptoms: String(row[7] || '').trim(),
+      relatedExams: String(row[8] || '').trim(),
+      pendingItems: String(row[9] || '').trim(),
+      doctorSummary: String(row[10] || '').trim(),
+      diagnosis: String(row[11] || '').trim(),
+      requestedExams: String(row[12] || '').trim(),
+      treatmentChanges: String(row[13] || '').trim(),
+      nextReturn: formatDateForDisplay(row[14]),
+      createdAt: String(row[15] || '').trim(),
     }
   })
 }

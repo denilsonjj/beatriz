@@ -1,12 +1,16 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react'
 import {
   DashboardSummary,
   ExamStatus,
   Resource,
   deleteHealthRecord,
   editHealthRecord,
+  loadPrescriptionImage,
   loadDashboardSummary,
+  PrescriptionImage,
+  PrescriptionUpload,
   saveHealthRecord,
+  savePrescription,
   updateExamStatus,
 } from './services/healthApi'
 import {
@@ -41,7 +45,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 
-type FormKey = 'consultation' | 'exam' | 'medication' | 'weight' | 'symptom' | 'bloodPressure'
+type FormKey = 'consultation' | 'exam' | 'medication' | 'weight' | 'symptom' | 'bloodPressure' | 'prescription'
 
 type FormConfig = {
   key: FormKey
@@ -83,6 +87,7 @@ const emptySummary: DashboardSummary = {
     weights: [],
     symptoms: [],
     bloodPressures: [],
+    prescriptions: [],
   },
 }
 
@@ -123,7 +128,16 @@ const formConfigs: FormConfig[] = [
     resource: 'bloodPressures',
     description: 'Registre a pressão máxima, a mínima e o pulso, se desejar.',
   },
+  {
+    key: 'prescription',
+    title: '🧾 Arquivar receita médica',
+    resource: 'prescriptions',
+    description: 'Tire uma foto da receita ou escolha uma imagem da galeria para guardar.',
+  },
 ]
+
+const prescriptionMaxFileBytes = 4 * 1024 * 1024
+const acceptedPrescriptionMimeTypes = ['image/jpeg', 'image/png', 'image/webp']
 
 function todayIso() {
   const now = new Date()
@@ -257,13 +271,36 @@ function buildHealthTimeline(summary: DashboardSummary): TimelineItem[] {
       icon: '❤️',
       tone: 'border-rose-200 bg-rose-50/70 text-rose-950',
     })),
+    ...summary.records.prescriptions.map((item) => ({
+      id: `prescription-${item.row}`,
+      date: item.date,
+      title: item.title,
+      detail: item.notes || 'Receita médica arquivada',
+      icon: '🧾',
+      tone: 'border-indigo-200 bg-indigo-50/70 text-indigo-950',
+    })),
   ]
+
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
 
   return items.sort((first, second) => {
     const firstDate = parseBrazilianDate(first.date)
     const secondDate = parseBrazilianDate(second.date)
     if (!firstDate) return secondDate ? 1 : 0
     if (!secondDate) return -1
+
+    const firstIsUpcomingConsultation = first.id.startsWith('consultation-') && firstDate.getTime() >= today.getTime()
+    const secondIsUpcomingConsultation = second.id.startsWith('consultation-') && secondDate.getTime() >= today.getTime()
+
+    if (firstIsUpcomingConsultation !== secondIsUpcomingConsultation) {
+      return firstIsUpcomingConsultation ? -1 : 1
+    }
+
+    if (firstIsUpcomingConsultation && secondIsUpcomingConsultation) {
+      return firstDate.getTime() - secondDate.getTime()
+    }
+
     return secondDate.getTime() - firstDate.getTime()
   })
 }
@@ -292,7 +329,7 @@ function getInitialFormData(form: FormKey): Record<string, string> {
       return {
         date: today, time: '', doctor: '', specialty: '', location: '', notes: '',
         questions: '', relatedSymptoms: '', relatedExams: '', pendingItems: '', doctorSummary: '',
-        diagnosis: '', requestedExams: '', treatmentChanges: '', nextReturn: '',
+        diagnosis: '', requestedExams: '', treatmentChanges: '', nextReturn: '', returnTime: '',
       }
     case 'exam':
       return { date: today, examName: '', resultSummary: '', status: 'Pendente', notes: '' }
@@ -304,6 +341,8 @@ function getInitialFormData(form: FormKey): Record<string, string> {
       return { date: today, description: '', intensity: 'Leve', notes: '' }
     case 'bloodPressure':
       return { date: today, systolic: '', diastolic: '', pulse: '', notes: '' }
+    case 'prescription':
+      return { date: today, title: '', notes: '', fileName: '', mimeType: '', fileId: '' }
   }
 }
 
@@ -339,6 +378,10 @@ function getClientValidationError(form: FormKey, data: Record<string, string>) {
       ['date', 'Informe a data da aferição.'],
       ['systolic', 'Informe a pressão máxima.'],
       ['diastolic', 'Informe a pressão mínima.'],
+    ],
+    prescription: [
+      ['date', 'Informe a data da receita.'],
+      ['title', 'Dê um nome para identificar a receita.'],
     ],
   }
 
@@ -391,6 +434,10 @@ export default function App() {
   const [updatingExamRow, setUpdatingExamRow] = useState<number | null>(null)
   const [notice, setNotice] = useState<Notice>(null)
   const [currentTime, setCurrentTime] = useState(getCurrentTime())
+  const [prescriptionFile, setPrescriptionFile] = useState<PrescriptionUpload | null>(null)
+  const [prescriptionPreview, setPrescriptionPreview] = useState<string | null>(null)
+  const [viewingPrescription, setViewingPrescription] = useState<{ title: string; image: PrescriptionImage } | null>(null)
+  const [isPrescriptionImageLoading, setIsPrescriptionImageLoading] = useState<number | null>(null)
 
   // Controle de carregamento com splash sincronizado
   const [minTimeElapsed, setMinTimeElapsed] = useState(false)
@@ -469,6 +516,8 @@ export default function App() {
   function openForm(form: FormKey) {
     setNotice(null)
     setEditTarget(null)
+    setPrescriptionFile(null)
+    setPrescriptionPreview(null)
     setActiveForm(form)
     setFormData(getInitialFormData(form))
   }
@@ -476,6 +525,8 @@ export default function App() {
   function openEditForm(form: FormKey, resource: Resource, row: number, data: Record<string, string>) {
     setNotice(null)
     setEditTarget({ resource, row })
+    setPrescriptionFile(null)
+    setPrescriptionPreview(null)
     setActiveForm(form)
     setFormData(data)
   }
@@ -484,11 +535,62 @@ export default function App() {
     if (!isSubmitting) {
       setActiveForm(null)
       setEditTarget(null)
+      setPrescriptionFile(null)
+      setPrescriptionPreview(null)
     }
   }
 
   function updateField(field: string, value: string) {
     setFormData((current) => ({ ...current, [field]: value }))
+  }
+
+  function handlePrescriptionFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    if (!acceptedPrescriptionMimeTypes.includes(file.type)) {
+      setNotice({ type: 'error', text: '⚠️ Use uma foto em JPG, PNG ou WEBP.' })
+      event.target.value = ''
+      return
+    }
+
+    if (file.size > prescriptionMaxFileBytes) {
+      setNotice({ type: 'error', text: '⚠️ A foto deve ter no máximo 4 MB. Tente enviar uma imagem menor.' })
+      event.target.value = ''
+      return
+    }
+
+    const reader = new FileReader()
+    reader.onerror = () => {
+      setNotice({ type: 'error', text: '❌ Não foi possível ler essa foto. Tente novamente.' })
+      event.target.value = ''
+    }
+    reader.onload = () => {
+      const imageData = String(reader.result || '')
+      const base64 = imageData.split(',')[1]
+      if (!base64) {
+        setNotice({ type: 'error', text: '❌ Não foi possível preparar essa foto. Tente novamente.' })
+        return
+      }
+
+      setPrescriptionFile({ fileName: file.name || 'receita.jpg', mimeType: file.type, base64 })
+      setPrescriptionPreview(imageData)
+      setNotice(null)
+    }
+    reader.readAsDataURL(file)
+  }
+
+  async function openPrescriptionImage(row: number, title: string) {
+    setIsPrescriptionImageLoading(row)
+    setNotice(null)
+    try {
+      const image = await loadPrescriptionImage(row)
+      setViewingPrescription({ title, image })
+    } catch (error) {
+      setNotice({ type: 'error', text: error instanceof Error ? `❌ ${error.message}` : '❌ Não foi possível abrir a foto da receita.' })
+    } finally {
+      setIsPrescriptionImageLoading(null)
+    }
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -510,11 +612,22 @@ export default function App() {
 
     try {
       const apiData = normalizeDatesForApi(formData)
-      if (editTarget) await editHealthRecord(editTarget.resource, editTarget.row, apiData)
-      else await saveHealthRecord(activeConfig.resource, apiData)
+      if (activeForm === 'prescription' && !editTarget) {
+        if (!prescriptionFile) {
+          setNotice({ type: 'error', text: '⚠️ Escolha ou tire uma foto da receita antes de salvar.' })
+          return
+        }
+        await savePrescription(apiData, prescriptionFile)
+      } else if (editTarget) {
+        await editHealthRecord(editTarget.resource, editTarget.row, apiData)
+      } else {
+        await saveHealthRecord(activeConfig.resource, apiData)
+      }
       await refreshDashboard()
       setActiveForm(null)
       setEditTarget(null)
+      setPrescriptionFile(null)
+      setPrescriptionPreview(null)
       setNotice({ type: 'success', text: editTarget ? '✅ Registro atualizado com sucesso!' : '🎉 Informação salva com sucesso no Google Sheets!' })
     } catch (error) {
       setNotice({
@@ -750,6 +863,7 @@ export default function App() {
           {textarea('Exames solicitados', 'requestedExams')}
           {textarea('Medicamentos ou mudanças de tratamento', 'treatmentChanges')}
           {field('Próximo retorno', 'nextReturn', 'date')}
+          {field('Horário do próximo retorno', 'returnTime', 'time')}
         </>
       )
     }
@@ -825,6 +939,39 @@ export default function App() {
         {textareaWithChips('Descrição do sintoma', 'description', ['Dor de cabeça', 'Tontura', 'Enjoo', 'Dor nas costas', 'Pressão alta', 'Cansaço'], true)}
         {select('Intensidade', 'intensity', ['Leve', 'Moderada', 'Forte'])}
         {textarea('Observações', 'notes')}
+      </>
+    )
+
+    if (activeForm === 'prescription') return (
+      <>
+        {formSection('Receita médica', 'Dê um nome simples para encontrar a receita depois e guarde uma foto legível.')}
+        {field('Data da receita', 'date', 'date', true)}
+        {field('Identificação da receita', 'title', 'text', true)}
+        {textarea('Observações', 'notes')}
+        {editTarget ? (
+          <Card className="border-indigo-100 bg-indigo-50/70 p-4 shadow-none">
+            <p className="font-extrabold text-indigo-950">📷 Foto já arquivada</p>
+            <p className="mt-1 text-sm font-semibold leading-relaxed text-indigo-900">Aqui você pode ajustar o nome, a data ou as observações. Para trocar a foto, exclua esta receita e arquive a nova imagem.</p>
+          </Card>
+        ) : (
+          <div className="block text-base font-bold text-slate-800">
+            <Label htmlFor="prescription-file" className="text-base font-bold">Foto da receita *</Label>
+            <Input
+              id="prescription-file"
+              name="prescription-file"
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              capture="environment"
+              onChange={handlePrescriptionFileChange}
+              required={!prescriptionFile}
+              className={`${inputClassName} cursor-pointer file:mr-4 file:rounded-md file:border-0 file:bg-teal-50 file:px-3 file:py-2 file:font-bold file:text-teal-900 hover:file:bg-teal-100`}
+            />
+            <p className="mt-2 text-sm font-semibold leading-relaxed text-slate-500">Você pode tirar uma foto agora ou escolher uma da galeria. Use JPG, PNG ou WEBP de até 4 MB.</p>
+            {prescriptionPreview && (
+              <img src={prescriptionPreview} alt="Prévia da receita selecionada" className="mt-4 max-h-72 w-full rounded-lg border border-indigo-100 bg-white object-contain" />
+            )}
+          </div>
+        )}
       </>
     )
 
@@ -1050,7 +1197,7 @@ export default function App() {
             <section aria-labelledby="timeline-title">
               <h2 id="timeline-title" className="text-2xl font-extrabold text-slate-900">🗓️ Evolução da saúde</h2>
               <p className="mt-2 text-base font-semibold leading-relaxed text-slate-600">
-                Veja consultas, exames, medicamentos e registros de saúde em ordem da data mais recente para a mais antiga.
+                As consultas de hoje e as futuras aparecem primeiro, da mais próxima para a mais distante. Depois, veja os demais registros do mais recente para o mais antigo.
               </p>
               {timelineItems.length > 0 ? (
                 <ol className="mt-6 space-y-4 border-l-4 border-teal-100 pl-5 sm:pl-7">
@@ -1140,6 +1287,37 @@ export default function App() {
                 )}
               </Card>
 
+              <Card className="rounded-xl border-indigo-100 bg-white p-5 shadow-sm">
+                <h3 className="text-xl font-extrabold text-indigo-950">🧾 Receitas médicas</h3>
+                <p className="mt-1 text-sm font-semibold text-slate-500">As fotos ficam arquivadas com a data, um nome simples e as observações que você quiser.</p>
+                {summary.records.prescriptions.length > 0 ? (
+                  <ul className="mt-4 space-y-3">
+                    {sortByClosestDate(summary.records.prescriptions).map((item) => (
+                      <li key={item.row} className="rounded-lg border border-indigo-100 bg-indigo-50/40 p-4 text-slate-700">
+                        <p className="text-lg font-extrabold text-slate-900">{item.title}</p>
+                        <p className="font-bold">{item.date || 'Data não informada'}</p>
+                        <p className="mt-2 break-words"><span className="font-extrabold">Observações:</span> {item.notes || 'Nenhuma observação'}</p>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          disabled={isPrescriptionImageLoading === item.row}
+                          onClick={() => void openPrescriptionImage(item.row, item.title)}
+                          className="mt-4 border-indigo-200 bg-white text-indigo-800 hover:bg-indigo-50"
+                        >
+                          {isPrescriptionImageLoading === item.row ? 'Abrindo foto...' : '📷 Ver foto da receita'}
+                        </Button>
+                        {recordActions('prescription', 'prescriptions', item.row, item.title, {
+                          date: item.date, title: item.title, notes: item.notes,
+                          fileName: item.fileName, mimeType: item.mimeType, fileId: item.fileId,
+                        })}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-4 font-semibold text-slate-500">Nenhuma receita arquivada ainda.</p>
+                )}
+              </Card>
+
               <div className="large-font-details grid gap-5 lg:grid-cols-2">
                 <Card className="rounded-xl border-slate-200/70 bg-white p-5 shadow-sm">
                   <h3 className="text-xl font-extrabold text-teal-950">🩺 Consultas</h3>
@@ -1151,7 +1329,7 @@ export default function App() {
                           <p className="font-bold">{item.date}{item.time ? ` às ${item.time}` : ''} · {item.specialty}</p>
                           <p className="mt-2"><span className="font-extrabold">Local:</span> {item.location || 'Não informado'}</p>
                           <p><span className="font-extrabold">Observações:</span> {item.notes || 'Nenhuma'}</p>
-                          {(item.questions || item.relatedSymptoms || item.relatedExams || item.pendingItems || item.doctorSummary || item.diagnosis || item.requestedExams || item.treatmentChanges || item.nextReturn) && (
+                          {(item.questions || item.relatedSymptoms || item.relatedExams || item.pendingItems || item.doctorSummary || item.diagnosis || item.requestedExams || item.treatmentChanges || item.nextReturn || item.returnTime) && (
                             <details className="mt-4 rounded-lg border border-teal-100 bg-white/80 p-4">
                               <summary className="cursor-pointer text-base font-extrabold text-teal-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-300">📋 Ver acompanhamento desta consulta</summary>
                               <dl className="mt-4 space-y-3 border-t border-teal-100 pt-4 text-base leading-relaxed">
@@ -1164,14 +1342,14 @@ export default function App() {
                                     {item.pendingItems && <div><dt className="font-extrabold">Pendências</dt><dd className="break-words">{item.pendingItems}</dd></div>}
                                   </div>
                                 )}
-                                {(item.doctorSummary || item.diagnosis || item.requestedExams || item.treatmentChanges || item.nextReturn) && (
+                                {(item.doctorSummary || item.diagnosis || item.requestedExams || item.treatmentChanges || item.nextReturn || item.returnTime) && (
                                   <div className="space-y-3 border-t border-teal-100 pt-4">
                                     <p className="font-extrabold text-teal-950">Depois da consulta</p>
                                     {item.doctorSummary && <div><dt className="font-extrabold">O que o médico informou</dt><dd className="break-words">{item.doctorSummary}</dd></div>}
                                     {item.diagnosis && <div><dt className="font-extrabold">Diagnóstico ou hipótese</dt><dd className="break-words">{item.diagnosis}</dd></div>}
                                     {item.requestedExams && <div><dt className="font-extrabold">Exames solicitados</dt><dd className="break-words">{item.requestedExams}</dd></div>}
                                     {item.treatmentChanges && <div><dt className="font-extrabold">Mudanças de tratamento</dt><dd className="break-words">{item.treatmentChanges}</dd></div>}
-                                    {item.nextReturn && <div><dt className="font-extrabold">Próximo retorno</dt><dd>{item.nextReturn}</dd></div>}
+                                    {(item.nextReturn || item.returnTime) && <div><dt className="font-extrabold">Próximo retorno</dt><dd>{item.nextReturn || 'Data não informada'}{item.returnTime ? ` às ${item.returnTime}` : ''}</dd></div>}
                                   </div>
                                 )}
                               </dl>
@@ -1183,7 +1361,7 @@ export default function App() {
                             relatedSymptoms: item.relatedSymptoms, relatedExams: item.relatedExams,
                             pendingItems: item.pendingItems, doctorSummary: item.doctorSummary,
                             diagnosis: item.diagnosis, requestedExams: item.requestedExams,
-                            treatmentChanges: item.treatmentChanges, nextReturn: item.nextReturn,
+                            treatmentChanges: item.treatmentChanges, nextReturn: item.nextReturn, returnTime: item.returnTime,
                           })}
                         </li>
                       ))}
@@ -1345,13 +1523,26 @@ export default function App() {
         )}
       </Dialog>
 
+      <Dialog open={Boolean(viewingPrescription)} onOpenChange={(open) => !open && setViewingPrescription(null)}>
+        {viewingPrescription && (
+          <DialogContent className="max-w-3xl rounded-xl border border-indigo-100 bg-white shadow-xl">
+            <DialogHeader className="border-b border-slate-100 pb-4">
+              <DialogTitle className="text-2xl font-extrabold text-indigo-950">🧾 {viewingPrescription.title}</DialogTitle>
+              <DialogDescription className="text-base font-semibold leading-relaxed text-slate-600">Foto arquivada da receita médica.</DialogDescription>
+            </DialogHeader>
+            <img src={viewingPrescription.image.imageData} alt={`Receita médica: ${viewingPrescription.title}`} className="mt-5 max-h-[70vh] w-full rounded-lg border border-indigo-100 bg-slate-50 object-contain" />
+            <p className="mt-3 break-words text-sm font-semibold text-slate-500">Arquivo: {viewingPrescription.image.fileName}</p>
+          </DialogContent>
+        )}
+      </Dialog>
+
       <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && !isDeleting && setDeleteTarget(null)}>
         {deleteTarget && (
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle className="text-2xl font-extrabold text-slate-900">Excluir este registro?</AlertDialogTitle>
               <AlertDialogDescription className="text-base leading-relaxed text-slate-600">
-                Você está prestes a excluir <strong>“{deleteTarget.label}”</strong>. Essa informação será removida definitivamente da planilha e não poderá ser recuperada.
+                Você está prestes a excluir <strong>“{deleteTarget.label}”</strong>. Essa informação será removida definitivamente da planilha{deleteTarget.resource === 'prescriptions' ? ' e a foto será removida do Drive' : ''} e não poderá ser recuperada.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>

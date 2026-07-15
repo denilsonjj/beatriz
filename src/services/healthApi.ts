@@ -1,4 +1,4 @@
-export type Resource = 'consultations' | 'exams' | 'medications' | 'weights' | 'symptoms' | 'bloodPressures'
+export type Resource = 'consultations' | 'exams' | 'medications' | 'weights' | 'symptoms' | 'bloodPressures' | 'prescriptions'
 
 export type ExamStatus = 'Pendente' | 'Realizado' | 'Avaliado'
 
@@ -19,6 +19,7 @@ export type ConsultationRecord = {
   requestedExams: string
   treatmentChanges: string
   nextReturn: string
+  returnTime: string
   createdAt: string
 }
 
@@ -70,6 +71,17 @@ export type BloodPressureRecord = {
   createdAt: string
 }
 
+export type PrescriptionRecord = {
+  row: number
+  date: string
+  title: string
+  notes: string
+  fileName: string
+  mimeType: string
+  fileId: string
+  createdAt: string
+}
+
 export type HealthRecords = {
   consultations: ConsultationRecord[]
   exams: ExamRecord[]
@@ -77,6 +89,7 @@ export type HealthRecords = {
   weights: WeightRecord[]
   symptoms: SymptomRecord[]
   bloodPressures: BloodPressureRecord[]
+  prescriptions: PrescriptionRecord[]
 }
 
 export type DashboardSummary = {
@@ -99,11 +112,24 @@ type ApiResponse<T> = {
 }
 
 type RequestPayload = {
-  action: 'summary' | 'ping' | 'create' | 'update' | 'delete' | 'updateExamStatus'
+  action: 'summary' | 'ping' | 'create' | 'update' | 'delete' | 'updateExamStatus' | 'createPrescription' | 'getPrescriptionImage'
   resource?: Resource
   data?: Record<string, string>
   row?: number
   status?: ExamStatus
+  file?: PrescriptionUpload
+}
+
+export type PrescriptionUpload = {
+  fileName: string
+  mimeType: string
+  base64: string
+}
+
+export type PrescriptionImage = {
+  fileName: string
+  mimeType: string
+  imageData: string
 }
 
 const apiUrl = import.meta.env.VITE_GOOGLE_APPS_SCRIPT_URL?.trim()
@@ -176,6 +202,18 @@ export async function saveHealthRecord(resource: Resource, data: Record<string, 
     resource,
     data,
   })
+}
+
+export async function savePrescription(data: Record<string, string>, file: PrescriptionUpload) {
+  return request<{ sheet: string; row: number }>({
+    action: 'createPrescription',
+    data,
+    file,
+  })
+}
+
+export async function loadPrescriptionImage(row: number) {
+  return request<PrescriptionImage>({ action: 'getPrescriptionImage', row })
 }
 
 export async function editHealthRecord(resource: Resource, row: number, data: Record<string, string>) {

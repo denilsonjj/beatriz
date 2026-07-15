@@ -7,6 +7,9 @@
  */
 
 const API_TOKEN = '2276bg7dshba'
+const PRESCRIPTIONS_FOLDER_NAME = 'Receitas - Minha Saúde'
+const PRESCRIPTION_MAX_FILE_BYTES = 4 * 1024 * 1024
+const PRESCRIPTION_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 
 const RESOURCE_CONFIG = {
   consultations: {
@@ -15,12 +18,12 @@ const RESOURCE_CONFIG = {
       'Data', 'Horário', 'Médico', 'Especialidade', 'Local', 'Observações',
       'Perguntas para a consulta', 'Sintomas relacionados', 'Exames relacionados', 'Pendências',
       'O que o médico informou', 'Diagnóstico ou hipótese', 'Exames solicitados',
-      'Medicamentos ou mudanças de tratamento', 'Próximo retorno', 'Criado em',
+      'Medicamentos ou mudanças de tratamento', 'Próximo retorno', 'Horário do próximo retorno', 'Criado em',
     ],
     fields: [
       'date', 'time', 'doctor', 'specialty', 'location', 'notes',
       'questions', 'relatedSymptoms', 'relatedExams', 'pendingItems', 'doctorSummary',
-      'diagnosis', 'requestedExams', 'treatmentChanges', 'nextReturn',
+      'diagnosis', 'requestedExams', 'treatmentChanges', 'nextReturn', 'returnTime',
     ],
     required: ['date', 'time', 'doctor', 'specialty'],
   },
@@ -53,6 +56,12 @@ const RESOURCE_CONFIG = {
     headers: ['Data', 'Pressão máxima', 'Pressão mínima', 'Pulso', 'Observações', 'Criado em'],
     fields: ['date', 'systolic', 'diastolic', 'pulse', 'notes'],
     required: ['date', 'systolic', 'diastolic'],
+  },
+  prescriptions: {
+    sheetName: 'Receitas',
+    headers: ['Data', 'Identificação da receita', 'Observações', 'Nome do arquivo', 'Tipo do arquivo', 'ID do arquivo no Drive', 'Criado em'],
+    fields: ['date', 'title', 'notes', 'fileName', 'mimeType', 'fileId'],
+    required: ['date', 'title'],
   },
 }
 
@@ -90,6 +99,21 @@ function doPost(e) {
         success: true,
         message: 'Status do exame atualizado com sucesso.',
         data: updateExamStatus(spreadsheet, payload.row, payload.status),
+      })
+    }
+
+    if (payload.action === 'createPrescription') {
+      return createJsonResponse({
+        success: true,
+        message: 'Receita arquivada com sucesso.',
+        data: createPrescription(spreadsheet, payload.data, payload.file),
+      })
+    }
+
+    if (payload.action === 'getPrescriptionImage') {
+      return createJsonResponse({
+        success: true,
+        data: getPrescriptionImage(spreadsheet, payload.row),
       })
     }
 
@@ -179,6 +203,13 @@ function testConnection() {
 
   ensureAllSheets(spreadsheet)
   Logger.log('Conexão validada. As abas e os cabeçalhos foram criados com sucesso.')
+}
+
+// Execute uma única vez no editor do Apps Script para autorizar o Drive
+// usado pelas fotos das receitas médicas.
+function authorizeDriveForPrescriptions() {
+  const folder = getPrescriptionsFolder()
+  Logger.log('Pasta de receitas autorizada: ' + folder.getName())
 }
 
 function createJsonResponse(payload) {
@@ -427,6 +458,9 @@ function updateHealthRecord(spreadsheet, resourceValue, rowValue, data) {
 
 function deleteHealthRecord(spreadsheet, resourceValue, rowValue) {
   const resourceInfo = getResourceConfig(resourceValue)
+  if (resourceInfo.resource === 'prescriptions') {
+    return deletePrescription(spreadsheet, rowValue)
+  }
   const sheet = getOrCreateSheet(spreadsheet, resourceInfo.config.sheetName, resourceInfo.config.headers)
   const row = getValidRecordRow(sheet, rowValue)
   const lock = LockService.getScriptLock()
@@ -439,6 +473,148 @@ function deleteHealthRecord(spreadsheet, resourceValue, rowValue) {
   } finally {
     lock.releaseLock()
   }
+}
+
+function createPrescription(spreadsheet, data, fileData) {
+  const config = RESOURCE_CONFIG.prescriptions
+  validateRecord('prescriptions', data, config)
+  const file = validatePrescriptionFile(fileData)
+  const lock = LockService.getScriptLock()
+  lock.waitLock(10000)
+
+  let driveFile = null
+  try {
+    const folder = getPrescriptionsFolder()
+    const cleanFileName = buildPrescriptionFileName(data.title, file.fileName)
+    const blob = Utilities.newBlob(file.bytes, file.mimeType, cleanFileName)
+    driveFile = folder.createFile(blob)
+
+    const sheet = getOrCreateSheet(spreadsheet, config.sheetName, config.headers)
+    const row = buildRow(config, {
+      date: data.date,
+      title: data.title,
+      notes: data.notes,
+      fileName: cleanFileName,
+      mimeType: file.mimeType,
+      fileId: driveFile.getId(),
+    })
+    const nextRow = sheet.getLastRow() + 1
+    sheet.getRange(nextRow, 1, 1, row.length).setValues([row])
+    SpreadsheetApp.flush()
+
+    return { sheet: config.sheetName, row: nextRow }
+  } catch (error) {
+    if (driveFile) {
+      try {
+        driveFile.setTrashed(true)
+      } catch (cleanupError) {
+        // The spreadsheet error is more useful to the user than a cleanup error.
+      }
+    }
+    throw error
+  } finally {
+    lock.releaseLock()
+  }
+}
+
+function deletePrescription(spreadsheet, rowValue) {
+  const config = RESOURCE_CONFIG.prescriptions
+  const sheet = getOrCreateSheet(spreadsheet, config.sheetName, config.headers)
+  const row = getValidRecordRow(sheet, rowValue)
+  const lock = LockService.getScriptLock()
+  lock.waitLock(10000)
+
+  try {
+    const fileId = String(sheet.getRange(row, 6).getDisplayValue() || '').trim()
+    if (fileId) {
+      try {
+        DriveApp.getFileById(fileId).setTrashed(true)
+      } catch (error) {
+        // The photo may have been removed manually from Drive. Keep allowing the sheet record to be deleted.
+      }
+    }
+
+    sheet.deleteRow(row)
+    SpreadsheetApp.flush()
+    return { sheet: config.sheetName, row: row }
+  } finally {
+    lock.releaseLock()
+  }
+}
+
+function getPrescriptionImage(spreadsheet, rowValue) {
+  const config = RESOURCE_CONFIG.prescriptions
+  const sheet = getOrCreateSheet(spreadsheet, config.sheetName, config.headers)
+  const row = getValidRecordRow(sheet, rowValue)
+  const values = sheet.getRange(row, 1, 1, 6).getDisplayValues()[0]
+  const fileName = String(values[3] || 'receita.jpg').trim()
+  const mimeType = String(values[4] || 'image/jpeg').trim()
+  const fileId = String(values[5] || '').trim()
+
+  if (!fileId) {
+    throw new Error('A foto desta receita não foi encontrada.')
+  }
+
+  let driveFile
+  try {
+    driveFile = DriveApp.getFileById(fileId)
+  } catch (error) {
+    throw new Error('A foto desta receita não está mais disponível no Google Drive.')
+  }
+
+  const bytes = driveFile.getBlob().getBytes()
+  if (bytes.length > PRESCRIPTION_MAX_FILE_BYTES) {
+    throw new Error('Essa foto é grande demais para abrir aqui. Exclua e arquive uma imagem de até 4 MB.')
+  }
+
+  return {
+    fileName: fileName,
+    mimeType: mimeType,
+    imageData: 'data:' + mimeType + ';base64,' + Utilities.base64Encode(bytes),
+  }
+}
+
+function validatePrescriptionFile(fileData) {
+  if (!fileData || typeof fileData !== 'object') {
+    throw new Error('Escolha uma foto da receita antes de salvar.')
+  }
+
+  const fileName = String(fileData.fileName || '').trim()
+  const mimeType = String(fileData.mimeType || '').trim()
+  const base64 = String(fileData.base64 || '').trim()
+
+  if (!fileName || !base64 || PRESCRIPTION_MIME_TYPES.indexOf(mimeType) === -1) {
+    throw new Error('Use uma foto em JPG, PNG ou WEBP.')
+  }
+
+  let bytes
+  try {
+    bytes = Utilities.base64Decode(base64)
+  } catch (error) {
+    throw new Error('Não foi possível ler a foto enviada.')
+  }
+
+  if (!bytes.length || bytes.length > PRESCRIPTION_MAX_FILE_BYTES) {
+    throw new Error('A foto deve ter no máximo 4 MB.')
+  }
+
+  return { fileName: fileName, mimeType: mimeType, bytes: bytes }
+}
+
+function getPrescriptionsFolder() {
+  const folders = DriveApp.getFoldersByName(PRESCRIPTIONS_FOLDER_NAME)
+  return folders.hasNext() ? folders.next() : DriveApp.createFolder(PRESCRIPTIONS_FOLDER_NAME)
+}
+
+function buildPrescriptionFileName(title, originalFileName) {
+  const extensionMatch = /\.([a-zA-Z0-9]{2,5})$/.exec(String(originalFileName || ''))
+  const extension = extensionMatch ? '.' + extensionMatch[1].toLowerCase() : '.jpg'
+  const safeTitle = String(title || 'receita')
+    .trim()
+    .replace(/[^a-zA-Z0-9áàâãéêíóôõúçÁÀÂÃÉÊÍÓÔÕÚÇ _-]/g, '')
+    .replace(/\s+/g, '-')
+    .slice(0, 70) || 'receita'
+  return 'receita-' + safeTitle + '-' + getTimestamp().replace(/[^0-9]/g, '') + extension
 }
 
 function updateExamStatus(spreadsheet, rowValue, statusValue) {
@@ -486,6 +662,7 @@ function getDashboardSummary(spreadsheet) {
   const weights = getRows(getOrCreateSheet(spreadsheet, RESOURCE_CONFIG.weights.sheetName, RESOURCE_CONFIG.weights.headers))
   const exams = getRows(getOrCreateSheet(spreadsheet, RESOURCE_CONFIG.exams.sheetName, RESOURCE_CONFIG.exams.headers))
   const bloodPressures = getRows(getOrCreateSheet(spreadsheet, RESOURCE_CONFIG.bloodPressures.sheetName, RESOURCE_CONFIG.bloodPressures.headers))
+  const prescriptions = getRows(getOrCreateSheet(spreadsheet, RESOURCE_CONFIG.prescriptions.sheetName, RESOURCE_CONFIG.prescriptions.headers))
 
   const upcomingConsultations = consultations
     .filter(function (row) {
@@ -555,6 +732,7 @@ function getDashboardSummary(spreadsheet) {
         getRows(getOrCreateSheet(spreadsheet, RESOURCE_CONFIG.symptoms.sheetName, RESOURCE_CONFIG.symptoms.headers)),
       ),
       bloodPressures: buildBloodPressureRecords(bloodPressures),
+      prescriptions: buildPrescriptionRecords(prescriptions),
     },
   }
 }
@@ -584,7 +762,8 @@ function buildConsultationRecords(rows) {
       requestedExams: String(row[12] || '').trim(),
       treatmentChanges: String(row[13] || '').trim(),
       nextReturn: formatDateForDisplay(row[14]),
-      createdAt: String(row[15] || '').trim(),
+      returnTime: String(row[15] || '').trim(),
+      createdAt: String(row[16] || '').trim(),
     }
   })
 }
@@ -653,6 +832,21 @@ function buildBloodPressureRecords(rows) {
       pulse: String(row[3] || '').trim(),
       notes: String(row[4] || '').trim(),
       createdAt: String(row[5] || '').trim(),
+    }
+  })
+}
+
+function buildPrescriptionRecords(rows) {
+  return newestFirst(rows, function (row, rowNumber) {
+    return {
+      row: rowNumber,
+      date: formatDateForDisplay(row[0]),
+      title: String(row[1] || '').trim(),
+      notes: String(row[2] || '').trim(),
+      fileName: String(row[3] || '').trim(),
+      mimeType: String(row[4] || '').trim(),
+      fileId: String(row[5] || '').trim(),
+      createdAt: String(row[6] || '').trim(),
     }
   })
 }
